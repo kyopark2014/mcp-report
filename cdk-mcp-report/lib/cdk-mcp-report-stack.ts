@@ -547,7 +547,9 @@ export class CdkMcpReportStack extends cdk.Stack {
       originShieldEnabled: false,
       protocolPolicy: cloudFront.OriginProtocolPolicy.HTTP_ONLY      
     });
-    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(s3Bucket);
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(s3Bucket, {
+      originPath: '/sharing'
+    });
 
     const distribution = new cloudFront.Distribution(this, `cloudfront-for-${projectName}`, {
       comment: `CloudFront-for-${projectName}`,
