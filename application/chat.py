@@ -154,9 +154,8 @@ def initiate():
 
 initiate()
 
-config, environment = utils.load_config()
-print(f"config: {config}")
-print(f"environment: {environment}")
+config = utils.load_config()
+logger.info(f"config: {config}")
 
 bedrock_region = config["region"] if "region" in config else "us-west-2"
 projectName = config["projectName"] if "projectName" in config else "mcp-rag"
@@ -459,7 +458,10 @@ try:
 
     # logger.info(f"code_interpreter_id: {code_interpreter_id}")
 except Exception as e:
-    raise e
+    logger.info(f"Code interpreter credential is not available: {e}")
+    code_interpreter_api_key = ""
+    code_interpreter_project = ""
+    code_interpreter_id = ""
 
 if code_interpreter_api_key:
     os.environ["RIZA_API_KEY"] = code_interpreter_api_key

@@ -562,12 +562,26 @@ export class CdkMcpReportStack extends cdk.Stack {
         '/sharing/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
+          allowedMethods: cloudFront.AllowedMethods.ALLOW_GET_HEAD,
           cachePolicy: cloudFront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER
         }
       },
       priceClass: cloudFront.PriceClass.PRICE_CLASS_200
     }); 
+
+    // S3 버킷 정책 추가
+    s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject'],
+      resources: [s3Bucket.arnForObjects('*')],
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': `arn:aws:cloudfront::${accountId}:distribution/${distribution.distributionId}`
+        }
+      }
+    }));
 
     new cdk.CfnOutput(this, `distributionDomainName-for-${projectName}`, {
       value: 'https://'+distribution.domainName,
@@ -646,7 +660,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       environment: {
         bedrock_region: String(region),
         projectName: projectName,
-        "sharing_url": 'https://'+distribution.domainName+'/sharing/',
+        "sharing_url": 'https://'+distribution.domainName+'/sharing',
       }
     });     
     
@@ -662,7 +676,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       "opensearch_url": OpenSearchCollection.attrCollectionEndpoint,
       "s3_bucket": s3Bucket.bucketName,      
       "s3_arn": s3Bucket.bucketArn,
-      "sharing_url": 'https://'+distribution.domainName+'/sharing/'
+      "sharing_url": 'https://'+distribution.domainName+'/sharing'
     }    
     new cdk.CfnOutput(this, `environment-for-${projectName}`, {
       value: JSON.stringify(environment),
