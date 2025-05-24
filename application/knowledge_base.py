@@ -213,11 +213,12 @@ def initiate_knowledge_base():
                             'embeddingModelArn': embeddingModelArn,
                             'embeddingModelConfiguration': {
                                 'bedrockEmbeddingModelConfiguration': {
-                                    'dimensions': 1024
+                                    'dimensions': 1024,
+                                    'embeddingDataType': 'FLOAT32'
                                 }
                             },
                             'supplementalDataStorageConfiguration': {
-                            'storageLocations': [{
+                                'storageLocations': [{
                                     'type': 'S3',
                                     's3Location': {
                                         'uri': f"s3://{s3_bucket}"
