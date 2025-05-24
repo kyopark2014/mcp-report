@@ -22,6 +22,31 @@ export class CdkMcpReportStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
+    // s3 
+    const s3Bucket = new s3.Bucket(this, `storage-${projectName}`,{
+      bucketName: bucketName,
+      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+      autoDeleteObjects: true,
+      publicReadAccess: false,
+      versioned: false,
+      cors: [
+        {
+          allowedHeaders: ['*'],
+          allowedMethods: [
+            s3.HttpMethods.GET,
+            s3.HttpMethods.POST,
+            s3.HttpMethods.PUT,
+          ],
+          allowedOrigins: ['*'],
+        },
+      ],
+    });
+    new cdk.CfnOutput(this, 'bucketName', {
+      value: s3Bucket.bucketName,
+      description: 'The nmae of bucket',
+    });
+
     // Knowledge Base Role
     const knowledge_base_role = new iam.Role(this,  `role-knowledge-base-for-${projectName}`, {
       roleName: `role-knowledge-base-for-${projectName}-${region}`,
@@ -51,7 +76,11 @@ export class CdkMcpReportStack extends cdk.Stack {
     
     const bedrockKnowledgeBaseS3Policy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      resources: ['*'],
+      // resources: ['*'],
+      resources: [
+        s3Bucket.bucketArn,
+        `${s3Bucket.bucketArn}/*`
+      ],
       actions: [
         "s3:GetBucketLocation",
         "s3:GetObject",
@@ -180,31 +209,6 @@ export class CdkMcpReportStack extends cdk.Stack {
       ]),
     });
     OpenSearchCollection.addDependency(dataAccessPolicy);
-
-    // s3 
-    const s3Bucket = new s3.Bucket(this, `storage-${projectName}`,{
-      bucketName: bucketName,
-      blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: true,
-      publicReadAccess: false,
-      versioned: false,
-      cors: [
-        {
-          allowedHeaders: ['*'],
-          allowedMethods: [
-            s3.HttpMethods.GET,
-            s3.HttpMethods.POST,
-            s3.HttpMethods.PUT,
-          ],
-          allowedOrigins: ['*'],
-        },
-      ],
-    });
-    new cdk.CfnOutput(this, 'bucketName', {
-      value: s3Bucket.bucketName,
-      description: 'The nmae of bucket',
-    });
 
     // agent role
     const agent_role = new iam.Role(this,  `role-agent-for-${projectName}`, {
@@ -571,7 +575,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       priceClass: cloudFront.PriceClass.PRICE_CLASS_200
     }); 
 
-    // S3 버킷 정책 추가
+    // S3 bucket policy
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],

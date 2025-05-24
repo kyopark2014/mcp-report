@@ -18,7 +18,7 @@ logging.basicConfig(
 logger = logging.getLogger("streamlit")
 
 # title
-st.set_page_config(page_title='MCP', page_icon=None, layout="centered", initial_sidebar_state="auto", menu_items=None)
+st.set_page_config(page_title='Report', page_icon=None, layout="centered", initial_sidebar_state="auto", menu_items=None)
 
 # 사이드바 너비 조정을 위한 CSS
 st.markdown("""
@@ -368,7 +368,7 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                 chat.save_chat_history(prompt, response)
             
             show_references(reference_docs) 
-            
+
         elif mode == 'Agent':
             sessionState = ""
             chat.references = []
