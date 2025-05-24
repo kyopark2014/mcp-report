@@ -34,7 +34,7 @@ s3_bucket = config["s3_bucket"] if "s3_bucket" in config else None
 if s3_bucket is None:
     raise Exception ("No storage!")
 
-parsingModelArn = f"arn:aws:bedrock:{region}::foundation-model/anthropic.claude-3-haiku-20240307-v1:0"
+parsingModelArn = f"arn:aws:bedrock:{region}::foundation-model/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
 embeddingModelArn = f"arn:aws:bedrock:{region}::foundation-model/amazon.titan-embed-text-v2:0"
 
 collectionArn = config["collectionArn"] if "collectionArn" in config else None
