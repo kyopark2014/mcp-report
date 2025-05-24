@@ -58,7 +58,9 @@ export class CdkMcpReportStack extends cdk.Stack {
     const bedrockInvokePolicy = new iam.PolicyStatement({ 
       effect: iam.Effect.ALLOW,
       resources: [
-        `arn:aws:bedrock:*::foundation-model/*`
+        `arn:aws:bedrock:us-west-2::foundation-model/*`,
+        `arn:aws:bedrock:us-east-1::foundation-model/*`,
+        `arn:aws:bedrock:us-east-2::foundation-model/*`
       ],
       // resources: ['*'],
       actions: [
@@ -76,11 +78,11 @@ export class CdkMcpReportStack extends cdk.Stack {
     
     const bedrockKnowledgeBaseS3Policy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      // resources: ['*'],
-      resources: [
-        s3Bucket.bucketArn,
-        `${s3Bucket.bucketArn}/*`
-      ],
+      resources: ['*'],
+      // resources: [
+      //   s3Bucket.bucketArn,
+      //   `${s3Bucket.bucketArn}/*`
+      // ],
       actions: [
         "s3:GetBucketLocation",
         "s3:GetObject",
