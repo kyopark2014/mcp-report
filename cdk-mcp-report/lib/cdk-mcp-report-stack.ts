@@ -576,7 +576,7 @@ export class CdkMcpReportStack extends cdk.Stack {
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],
-      resources: [s3Bucket.arnForObjects('docs/*')],
+      resources: [s3Bucket.bucketArn],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
         StringEquals: {
