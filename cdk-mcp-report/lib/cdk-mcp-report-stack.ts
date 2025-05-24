@@ -76,7 +76,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     
     const bedrockKnowledgeBaseS3Policy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      // resources: ['*'],
       resources: [
           s3Bucket.bucketArn,
         `${s3Bucket.bucketArn}/*`
@@ -542,6 +541,16 @@ export class CdkMcpReportStack extends cdk.Stack {
     });
     const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(s3Bucket);
 
+    // Create Origin Access Control for CloudFront
+    const originAccessControl = new cloudFront.CfnOriginAccessControl(this, `OAC-for-${projectName}`, {
+      originAccessControlConfig: {
+        name: `OAC-for-${projectName}`,
+        originAccessControlOriginType: 's3',
+        signingBehavior: 'always',
+        signingProtocol: 'sigv4'
+      }
+    });
+
     const distribution = new cloudFront.Distribution(this, `cloudfront-for-${projectName}`, {
       comment: `CloudFront-for-${projectName}`,
       defaultBehavior: {
@@ -563,11 +572,24 @@ export class CdkMcpReportStack extends cdk.Stack {
       priceClass: cloudFront.PriceClass.PRICE_CLASS_200
     }); 
 
-    // S3 bucket policy
+    // Update S3 bucket policy to allow access from CloudFront
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],
       resources: [s3Bucket.arnForObjects('*')],
+      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
+      conditions: {
+        StringEquals: {
+          'AWS:SourceArn': `arn:aws:cloudfront::${accountId}:distribution/${distribution.distributionId}`
+        }
+      }
+    }));
+
+    // Add bucket policy for sharing directory
+    s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: ['s3:GetObject'],
+      resources: [s3Bucket.arnForObjects('sharing/*')],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
         StringEquals: {
