@@ -198,7 +198,7 @@ def initiate_knowledge_base():
     except Exception:
         err_msg = traceback.format_exc()
         logger.info(f"error message: {err_msg}")
-                    
+    
     if not knowledge_base_id:
         logger.info(f"creating knowledge base...")  
         for atempt in range(3):
@@ -215,6 +215,14 @@ def initiate_knowledge_base():
                                 'bedrockEmbeddingModelConfiguration': {
                                     'dimensions': 1024
                                 }
+                            },
+                            'supplementalDataStorageConfiguration': {
+                            'storageLocations': [{
+                                    'type': 'S3',
+                                    's3Location': {
+                                        'uri': f"s3://{s3_bucket}"
+                                    }
+                                }]
                             }
                         }
                     },
@@ -229,13 +237,7 @@ def initiate_knowledge_base():
                             },
                             'vectorIndexName': vectorIndexName
                         }
-                    },
-                    supplementalDataStorageConfiguration={
-                        'type': 'S3',
-                        's3Configuration': {
-                            'bucketArn': s3_arn
-                        }
-                    }
+                    }                    
                 )   
                 logger.info(f"(create_knowledge_base) response: {response}")
             

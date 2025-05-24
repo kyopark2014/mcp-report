@@ -76,11 +76,7 @@ export class CdkMcpReportStack extends cdk.Stack {
     
     const bedrockKnowledgeBaseS3Policy = new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      // resources: ['*'],
-      resources: [
-        s3Bucket.bucketArn,
-        `${s3Bucket.bucketArn}/*`
-      ],
+      resources: ['*'],
       actions: [
         "s3:GetBucketLocation",
         "s3:GetObject",
