@@ -201,7 +201,7 @@ def initiate_knowledge_base():
                     
     if not knowledge_base_id:
         logger.info(f"creating knowledge base...")  
-        for atempt in range(20):
+        for atempt in range(3):
             try:
                 response = client.create_knowledge_base(
                     name=knowledge_base_name,
@@ -229,7 +229,13 @@ def initiate_knowledge_base():
                             },
                             'vectorIndexName': vectorIndexName
                         }
-                    }                
+                    },
+                    supplementalDataStorageConfiguration={
+                        'type': 'S3',
+                        's3Configuration': {
+                            'bucketArn': s3_arn
+                        }
+                    }
                 )   
                 logger.info(f"(create_knowledge_base) response: {response}")
             
@@ -302,10 +308,14 @@ def initiate_knowledge_base():
                         }
                     },
                     'parsingConfiguration': {
-                        'bedrockFoundationModelConfiguration': {
-                            'modelArn': parsingModelArn
+                        # 'bedrockFoundationModelConfiguration': {
+                        #     'modelArn': parsingModelArn
+                        # },
+                        # 'parsingStrategy': 'BEDROCK_FOUNDATION_MODEL'
+                        'bedrockDataAutomationConfiguration': {
+                            'parsingModality': 'MULTIMODAL'
                         },
-                        'parsingStrategy': 'BEDROCK_FOUNDATION_MODEL'
+                        'parsingStrategy': 'BEDROCK_DATA_AUTOMATION'
                     }
                 }
             )
