@@ -561,7 +561,7 @@ export class CdkMcpReportStack extends cdk.Stack {
         originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER        
       },
       additionalBehaviors: {
-        '/sharing/*': {
+        '/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudFront.AllowedMethods.ALLOW_GET_HEAD,
