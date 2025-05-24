@@ -193,6 +193,7 @@ export class CdkMcpReportStack extends cdk.Stack {
         {
           allowedHeaders: ['*'],
           allowedMethods: [
+            s3.HttpMethods.GET,
             s3.HttpMethods.POST,
             s3.HttpMethods.PUT,
           ],
@@ -547,9 +548,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       originShieldEnabled: false,
       protocolPolicy: cloudFront.OriginProtocolPolicy.HTTP_ONLY      
     });
-    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(s3Bucket, {
-      originPath: '/sharing'
-    });
+    const s3Origin = origins.S3BucketOrigin.withOriginAccessControl(s3Bucket);
 
     const distribution = new cloudFront.Distribution(this, `cloudfront-for-${projectName}`, {
       comment: `CloudFront-for-${projectName}`,
@@ -561,10 +560,10 @@ export class CdkMcpReportStack extends cdk.Stack {
         originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER        
       },
       additionalBehaviors: {
-        '/*': {
+        '/sharing/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
-          allowedMethods: cloudFront.AllowedMethods.ALLOW_GET_HEAD,
+          allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudFront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER
         }
