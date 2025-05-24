@@ -15,6 +15,8 @@ from datetime import datetime, timedelta
 from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.constants import START, END
+from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
+from IPython.display import Image
 
 import pandas as pd
 import plotly.express as px
@@ -131,7 +133,8 @@ def service_cost(state: CostSate, config) -> dict:
 
     return {
         "messages": [AIMessage(content=body)],
-        "service_costs": service_response
+        "service_costs": service_response,
+        "final_response": state["final_response"] + body + "\n\n"
     }
 
 def region_cost(state: CostSate, config) -> dict:
@@ -196,7 +199,8 @@ def region_cost(state: CostSate, config) -> dict:
 
     return {
         "messages": [AIMessage(content=body)],
-        "region_costs": region_response
+        "region_costs": region_response,
+        "final_response": state["final_response"] + body + "\n\n"
     }
 
 def daily_cost(state: CostSate, config) -> dict:
@@ -266,7 +270,8 @@ def daily_cost(state: CostSate, config) -> dict:
 
     return {
         "messages": [AIMessage(content=body)],
-        "daily_costs": daily_response
+        "daily_costs": daily_response,
+        "final_response": state["final_response"] + body + "\n\n"
     }
 
 def generate_insight(state: CostSate, config) -> dict:
@@ -311,9 +316,12 @@ def generate_insight(state: CostSate, config) -> dict:
         err_msg = traceback.format_exc()
         logger.debug(f"error message: {err_msg}")                    
         raise Exception ("Not able to request to LLM")
+    
+    key = f"artifacts/{request_id}_report.md"
+    chat.create_object(key, state["final_response"] + response.content)
 
     return {
-        "final_response": response.content
+        "final_response": state["final_response"] + response.content + "\n\n"
     }
 
 def reflect_context(state: CostSate) -> dict:
@@ -349,6 +357,32 @@ cost_agent = agent.compile()
 def run(request_id: str):
     logger.info(f"request_id: {request_id}")
 
+    # add plan to report
+    key = f"artifacts/{request_id}_plan.md"
+    
+    graph_diagram = cost_agent.get_graph().draw_mermaid_png(
+        draw_method=MermaidDrawMethod.API,
+        curve_style=CurveStyle.LINEAR
+    )
+    
+    random_id = ''.join(random.choices('abcdefghijklmnopqrstuvwxyz0123456789', k=8))
+    image_filename = f'workflow_{random_id}.png'
+    url = chat.upload_to_s3(graph_diagram, image_filename)
+    
+    task = "실행 계획"
+    output_images = f"![{task}]({url})\n\n"
+    body = f"## {task}\n\n{output_images}"
+    chat.updata_object(key, body, 'prepend')
+    
+    # graph_diagram = agent.get_graph().draw_mermaid_png()
+    # url = get_url(graph_diagram, "Workflow")
+
+    # task = "실행 계획"
+    # output_images = f"![{task}]({url})\n\n"
+    # body = f"## {task}\n\n{output_images}"
+    # chat.updata_object(key, body, 'prepend')
+
+    # make a report
     question = "AWS 사용량을 분석하세요."
         
     inputs = {
