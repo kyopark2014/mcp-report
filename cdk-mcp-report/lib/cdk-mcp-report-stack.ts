@@ -578,14 +578,36 @@ export class CdkMcpReportStack extends cdk.Stack {
     // S3 bucket policy
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
-      actions: ['s3:GetObject'],
-      resources: [s3Bucket.arnForObjects('*')],
+      actions: [
+        's3:GetObject',
+        's3:ListBucket',
+        's3:PutObject'
+      ],
+      resources: [
+        s3Bucket.bucketArn,
+        s3Bucket.arnForObjects('*')
+      ],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
         StringEquals: {
           'AWS:SourceArn': `arn:aws:cloudfront::${accountId}:distribution/${distribution.distributionId}`
         }
       }
+    }));
+
+    // Knowledge Base S3 bucket policy
+    s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        's3:GetObject',
+        's3:ListBucket',
+        's3:PutObject'
+      ],
+      resources: [
+        s3Bucket.bucketArn,
+        s3Bucket.arnForObjects('*')
+      ],
+      principals: [new iam.ArnPrincipal(knowledge_base_role.roleArn)]
     }));
 
     new cdk.CfnOutput(this, `distributionDomainName-for-${projectName}`, {
