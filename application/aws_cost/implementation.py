@@ -28,6 +28,7 @@ import chat
 import os
 import json
 import traceback
+import utils
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level

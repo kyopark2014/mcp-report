@@ -250,6 +250,29 @@ def save_chat_history(text, msg):
     else:
         memory_chain.chat_memory.add_ai_message(msg) 
 
+def create_object(key, body):
+    """
+    Create an object in S3 and return the URL. If the file already exists, append the new content.
+    """
+    s3_client = boto3.client(
+        service_name='s3',
+        region_name=bedrock_region
+    )
+    
+    # Content-Type based on file extension
+    content_type = 'application/octet-stream'  # default value
+    if key.endswith('.html'):
+        content_type = 'text/html'
+    elif key.endswith('.md'):
+        content_type = 'text/markdown'
+    
+    s3_client.put_object(
+        Bucket=s3_bucket,
+        Key=key,
+        Body=body,
+        ContentType=content_type
+    )    
+
 selected_chat = 0
 def get_chat(extended_thinking):
     global selected_chat, model_type

@@ -216,9 +216,6 @@ st.title('🔮 '+ mode)
 
 if clear_button==True:
     chat.initiate()
-    cost.cost_data = {}
-    cost.visualizations = {}
-
 # Initialize chat history
 if "messages" not in st.session_state:
     st.session_state.messages = []
@@ -318,11 +315,17 @@ if seed_image_url and clear_button==False and enable_seed==True:
 if clear_button==False and mode == '비용 분석':
     request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
-    # template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
-    # template = template.replace("{request_id}", request_id)
-    # template = template.replace("{sharing_url}", path)
-    # key = f"artifacts/{request_id}.html"
-    # create_object(key, template)
+    template = open(os.path.join(os.path.dirname(__file__), f"aws_cost/report.html")).read()
+    logger.info(f"template: {template}")
+
+    template = template.replace("{request_id}", request_id)
+    template = template.replace("{sharing_url}", chat.path)
+    key = f"artifacts/{request_id}.html"
+    chat.create_object(key, template)
+    
+    report_url = chat.path + "/artifacts/" + request_id + ".html"
+    logger.info(f"report_url: {report_url}")
+    st.info(f"report_url: {report_url}")
     
     response = aws_cost.implementation.run(request_id)
 
