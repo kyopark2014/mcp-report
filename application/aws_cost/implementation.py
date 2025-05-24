@@ -67,11 +67,13 @@ class CostSate(TypedDict):
     final_response: str
 
 # Define stand-alone functions
-def service_cost(state: CostSate) -> dict:
+def service_cost(state: CostSate, config) -> dict:
     logger.info(f"###### service_cost ######")
 
     logger.info(f"Getting cost analysis...")
     days = 30
+
+    request_id = config.get("configurable", {}).get("request_id", "")
 
     try:
         end_date = datetime.now()
@@ -110,23 +112,35 @@ def service_cost(state: CostSate) -> dict:
         service_costs,
         values='cost',
         names='SERVICE',
-        title='Service Cost'
+        color='SERVICE',
+        title='Service Cost',
+        template='plotly_white',  # Clean background
+        color_discrete_sequence=px.colors.qualitative.Set3  # Color palette
     )    
 
     url = get_url(fig_pie, "service_cost")
 
-    result = f"[AWS 서비스 사용량 그래프]({url})"
+    task = "AWS 서비스 사용량"
+    output_images = f"![{task} 그래프]({url})\n\n"
+
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    body = f"## {task}\n\n{output_images}"
+    chat.updata_object(key, time + body, 'append')
 
     return {
-        "messages": [AIMessage(content=result)],
+        "messages": [AIMessage(content=body)],
         "service_costs": service_response
     }
 
-def region_cost(state: CostSate) -> dict:
+def region_cost(state: CostSate, config) -> dict:
     logger.info(f"###### region_cost ######")
 
     logger.info(f"Getting cost analysis...")
     days = 30
+
+    request_id = config.get("configurable", {}).get("request_id", "")
 
     try:
         end_date = datetime.now()
@@ -165,20 +179,32 @@ def region_cost(state: CostSate) -> dict:
         region_costs,
         x='REGION',
         y='cost',
-        title='Region Cost'
+        color='REGION',
+        title='Region Cost',
+        template='plotly_white',  # Clean background
+        color_discrete_sequence=px.colors.qualitative.Set3  # Color palette
     )
     url = get_url(fig_bar, "region_costs")
-    result = f"[AWS 리전별 사용량 그래프]({url})"
+    task = "AWS 리전별 사용량"
+    output_images = f"![{task} 그래프]({url})\n\n"
+
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    body = f"## {task}\n\n{output_images}"
+    chat.updata_object(key, time + body, 'append')
 
     return {
-        "messages": [AIMessage(content=result)],
+        "messages": [AIMessage(content=body)],
         "region_costs": region_response
     }
 
-def daily_cost(state: CostSate) -> dict:
+def daily_cost(state: CostSate, config) -> dict:
     logger.info(f"###### daily_cost ######")
     logger.info(f"Getting cost analysis...")
     days = 30
+
+    request_id = config.get("configurable", {}).get("request_id", "")
 
     try:
         end_date = datetime.now()
@@ -222,13 +248,24 @@ def daily_cost(state: CostSate) -> dict:
         x='date',
         y='cost',
         color='SERVICE',
-        title='Daily Cost Trend'
+        title='Daily Cost Trend',
+        template='plotly_white',  # Clean background
+        markers=True,  # Add markers to data points
+        line_shape='spline'  # Smooth curve display
     )
     url = get_url(fig_line, "daily_costs")
-    result = f"[AWS 일자별 사용량 그래프]({url})"
+    
+    task = "AWS 일자별 사용량"
+    output_images = f"![{task} 그래프]({url})\n\n"
+
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    body = f"## {task}\n\n{output_images}"
+    chat.updata_object(key, time + body, 'append')
 
     return {
-        "messages": [AIMessage(content=result)],
+        "messages": [AIMessage(content=body)],
         "daily_costs": daily_response
     }
 

@@ -120,7 +120,7 @@
 
             try {
                 let request_id = "{request_id}";
-                let artifacts_url = "{artifacts_url}";
+                let sharing_url = "{sharing_url}";
                 let file_name = "";
                 
                 if (tabName === 'report') {
@@ -131,7 +131,7 @@
                     file_name = request_id + '_plan.md';
                 }
                 
-                let url = artifacts_url + '/artifacts/' + file_name;
+                let url = sharing_url + '/artifacts/' + file_name;
                 console.log("url: ", url);
 
                 const response = await fetch(url);
