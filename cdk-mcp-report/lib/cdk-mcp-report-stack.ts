@@ -576,7 +576,7 @@ export class CdkMcpReportStack extends cdk.Stack {
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],
-      resources: [s3Bucket.arnForObjects('/*')],
+      resources: [s3Bucket.arnForObjects('docs/*')],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
         StringEquals: {
@@ -585,18 +585,6 @@ export class CdkMcpReportStack extends cdk.Stack {
       }
     }));
 
-    // Add bucket policy for sharing directory
-    s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['s3:GetObject'],
-      resources: [s3Bucket.arnForObjects('sharing/*')],
-      principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
-      conditions: {
-        StringEquals: {
-          'AWS:SourceArn': `arn:aws:cloudfront::${accountId}:distribution/${distribution.distributionId}`
-        }
-      }
-    }));
 
     new cdk.CfnOutput(this, `distributionDomainName-for-${projectName}`, {
       value: 'https://'+distribution.domainName,
