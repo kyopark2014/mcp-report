@@ -567,6 +567,13 @@ export class CdkMcpReportStack extends cdk.Stack {
           allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudFront.CachePolicy.CACHING_DISABLED,
           originRequestPolicy: cloudFront.OriginRequestPolicy.CORS_S3_ORIGIN
+        },
+        '/images/*': {
+          origin: s3Origin,
+          viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
+          allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudFront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy: cloudFront.OriginRequestPolicy.CORS_S3_ORIGIN
         }
       },
       priceClass: cloudFront.PriceClass.PRICE_CLASS_200
@@ -578,8 +585,8 @@ export class CdkMcpReportStack extends cdk.Stack {
       actions: ['s3:GetObject'],
       resources: [
         s3Bucket.arnForObjects('*'),
-        // s3Bucket.arnForObjects('docs/*'),
-        s3Bucket.arnForObjects('docs/*')
+        s3Bucket.arnForObjects('docs/*'),
+        s3Bucket.arnForObjects('images/*')        
       ],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
