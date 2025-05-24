@@ -183,9 +183,9 @@ opensearch_url = config["opensearch_url"] if "opensearch_url" in config else Non
 if opensearch_url is None:
     raise Exception ("No OpenSearch URL")
 
-path = config["sharing_url"] if "sharing_url" in config else None
-if path is None:
-    raise Exception ("No Sharing URL")
+artifacts_url = config["artifacts_url"] if "artifacts_url" in config else None
+if artifacts_url is None:
+    raise Exception ("No artifacts URL")
 
 s3_arn = config["s3_arn"] if "s3_arn" in config else None
 if s3_arn is None:
