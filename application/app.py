@@ -319,7 +319,7 @@ if clear_button==False and mode == '비용 분석':
     logger.info(f"template: {template}")
 
     template = template.replace("{request_id}", request_id)
-    template = template.replace("{sharing_url}", chat.path)
+    template = template.replace("{artifacts_url}", chat.path)
     key = f"artifacts/{request_id}.html"
     chat.create_object(key, template)
     
