@@ -565,7 +565,7 @@ export class CdkMcpReportStack extends cdk.Stack {
           viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
           cachePolicy: cloudFront.CachePolicy.CACHING_DISABLED,
-          originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER
+          originRequestPolicy: cloudFront.OriginRequestPolicy.CORS_S3_ORIGIN
         }
       },
       priceClass: cloudFront.PriceClass.PRICE_CLASS_200
