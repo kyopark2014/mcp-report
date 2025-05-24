@@ -576,7 +576,11 @@ export class CdkMcpReportStack extends cdk.Stack {
     s3Bucket.addToResourcePolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],
-      resources: [s3Bucket.bucketArn],
+      resources: [
+        s3Bucket.arnForObjects('/*'),
+        s3Bucket.arnForObjects('sharing/*'),
+        s3Bucket.arnForObjects('docs/*')
+      ],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
       conditions: {
         StringEquals: {
@@ -584,7 +588,6 @@ export class CdkMcpReportStack extends cdk.Stack {
         }
       }
     }));
-
 
     new cdk.CfnOutput(this, `distributionDomainName-for-${projectName}`, {
       value: 'https://'+distribution.domainName,
