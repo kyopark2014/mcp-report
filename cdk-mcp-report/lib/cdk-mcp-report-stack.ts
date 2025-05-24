@@ -561,7 +561,7 @@ export class CdkMcpReportStack extends cdk.Stack {
         originRequestPolicy: cloudFront.OriginRequestPolicy.ALL_VIEWER        
       },
       additionalBehaviors: {
-        '/sharing/*': {
+        '/docs/*': {
           origin: s3Origin,
           viewerProtocolPolicy: cloudFront.ViewerProtocolPolicy.REDIRECT_TO_HTTPS,
           allowedMethods: cloudFront.AllowedMethods.ALLOW_ALL,
@@ -577,8 +577,8 @@ export class CdkMcpReportStack extends cdk.Stack {
       effect: iam.Effect.ALLOW,
       actions: ['s3:GetObject'],
       resources: [
-        s3Bucket.arnForObjects('/*'),
-        s3Bucket.arnForObjects('sharing/*'),
+        s3Bucket.arnForObjects('*'),
+        // s3Bucket.arnForObjects('docs/*'),
         s3Bucket.arnForObjects('docs/*')
       ],
       principals: [new iam.ServicePrincipal('cloudfront.amazonaws.com')],
@@ -666,7 +666,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       environment: {
         bedrock_region: String(region),
         projectName: projectName,
-        "sharing_url": 'https://'+distribution.domainName+'/sharing',
+        "docs_url": 'https://'+distribution.domainName+'/docs',
       }
     });     
     
@@ -682,7 +682,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       "opensearch_url": OpenSearchCollection.attrCollectionEndpoint,
       "s3_bucket": s3Bucket.bucketName,      
       "s3_arn": s3Bucket.bucketArn,
-      "sharing_url": 'https://'+distribution.domainName+'/sharing'
+      "docs_url": 'https://'+distribution.domainName+'/docs'
     }    
     new cdk.CfnOutput(this, `environment-for-${projectName}`, {
       value: JSON.stringify(environment),
