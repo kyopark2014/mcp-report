@@ -3,7 +3,7 @@ import chat
 import json
 import knowledge_base as kb
 import traceback
-import mcp_config 
+import mcp_config as mcp_config
 import logging
 import sys
 import aws_cost.implementation
@@ -98,7 +98,7 @@ with st.sidebar:
     
     # mcp selection
     mcp = ""
-    if mode=='Agent' or mode=='Agent (Chat)':
+    if mode=='Agent' or mode=='Agent (Chat)' or mode=='비용 분석':
         # MCP Config JSON input
         st.subheader("⚙️ MCP Config")
 
@@ -378,18 +378,9 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                 # request id
                 request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
                 logger.info(f"request_id: {request_id}")
-
-                # template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
-                # template = template.replace("{request_id}", request_id)
-                # template = template.replace("{sharing_url}", path)
-                # key = f"artifacts/{request_id}.html"
-                # create_object(key, template)
                 
                 response = aws_cost.implementation.run(request_id)
 
                 st.write(response)
 
                 st.session_state.messages.append({"role": "assistant", "content": response})
-
-
-

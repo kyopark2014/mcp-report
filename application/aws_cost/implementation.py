@@ -111,6 +111,47 @@ def reflect(draft):
         "search_queries": search_queries
     }
 
+def revise_draft(draft, reflection, search_queries):   
+    logger.info(f"###### revise_draft ######")
+        
+    system = """Revise your previous answer using the new information. 
+You should use the previous critique to add important information to your answer. provide the final answer with <result> tag. 
+<critique>
+{reflection}
+</critique>
+
+<information>
+{content}
+</information>"""
+
+    human = "<draft>{draft}</draft>"
+                
+    reflection_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("human", human)
+        ]
+    )
+        
+    content = []            
+    for q in search_queries:
+        response = enhanced_search(q, config)
+        print(f'q: {q}, response: {response}')
+        content.append(response)                   
+
+    reflect = reflection_prompt | chat.get_chat(extended_thinking="Disable")
+        
+    result = reflect.invoke(
+        {
+            "draft": draft,
+            "reflection": reflection,
+            "content": content
+        }
+    )   
+    logger.info(f"result: {result.content}")
+                            
+    return result.content
+    
 #########################################################
 # Cost Agent
 #########################################################
@@ -119,8 +160,10 @@ class CostState(TypedDict):
     service_costs: dict
     region_costs: dict
     daily_costs: dict
-    final_response: str
+    draft: str
     iteration: int
+    reflection: list[str]
+    final_response: str    
 
 # Define stand-alone functions
 def service_cost(state: CostState, config) -> dict:
@@ -180,7 +223,7 @@ def service_cost(state: CostState, config) -> dict:
     output_images = f"![{task} 그래프]({url})\n\n"
 
     key = f"artifacts/{request_id}_steps.md"
-    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요."
     summary = get_summary(fig_pie, instruction)
@@ -188,10 +231,12 @@ def service_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
+    draft = state["draft"] if "draft" in state else ""
+
     return {
         "messages": [AIMessage(content=body)],
         "service_costs": service_response,
-        "final_response": state["final_response"] + body + "\n\n"
+        "draft": draft + body + "\n\n"
     }
 
 def region_cost(state: CostState, config) -> dict:
@@ -249,7 +294,7 @@ def region_cost(state: CostState, config) -> dict:
     output_images = f"![{task} 그래프]({url})\n\n"
 
     key = f"artifacts/{request_id}_steps.md"
-    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요. 여기서 비용 단위는 dollar 입니다."
     summary = get_summary(fig_bar, instruction)
@@ -257,10 +302,12 @@ def region_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
+    draft = state["draft"] if "draft" in state else ""
+
     return {
         "messages": [AIMessage(content=body)],
         "region_costs": region_response,
-        "final_response": state["final_response"] + body + "\n\n"
+        "draft": draft + body + "\n\n"
     }
 
 def daily_cost(state: CostState, config) -> dict:
@@ -323,7 +370,7 @@ def daily_cost(state: CostState, config) -> dict:
     output_images = f"![{task} 그래프]({url})\n\n"
 
     key = f"artifacts/{request_id}_steps.md"
-    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
     instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요. 여기서 비용 단위는 dollar 입니다."
     summary = get_summary(fig_line, instruction)
@@ -331,10 +378,12 @@ def daily_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
+    draft = state["draft"] if "draft" in state else ""
+
     return {
         "messages": [AIMessage(content=body)],
         "daily_costs": daily_response,
-        "final_response": state["final_response"] + body + "\n\n"
+        "draft": draft + body + "\n\n"
     }
 
 def generate_insight(state: CostState, config) -> dict:
@@ -380,35 +429,57 @@ def generate_insight(state: CostState, config) -> dict:
         logger.debug(f"error message: {err_msg}")                    
         raise Exception ("Not able to request to LLM")
     
+    # logging in step.md
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    chat.updata_object(key, time + response.content, 'append')
+    
+    # the first report
     key = f"artifacts/{request_id}_report.md"
-    body = "# AWS 사용량 분석\n" + state["final_response"] + response.content
+    draft = state["draft"] if "draft" in state else ""
+    body = "# AWS 사용량 분석\n" + draft + response.content    
+    logger.info(f"body: {body}")        
     chat.create_object(key, body)
 
     return {
-        "final_response": body
+        "final_response": body,
+        "iteration": 0
     }
 
 def reflect_context(state: CostState, config) -> dict:
     logger.info(f"###### reflect_context ######")
     iteration = state["iteration"] if "iteration" in state else 0
+    if iteration >= config.get("configurable", {}).get("max_iteration", 1):
+        logger.info(f"go to END")
+        return {
+            "final_response": state["final_response"]
+        }
 
-    request_id = config.get("configurable", {}).get("request_id", "")
-
-    draft = state["final_response"]
-    result = reflect(draft)
+    # reflect the previous final response    
+    result = reflect(state["final_response"])
     logger.info(f"reflection result: {result}")
 
     # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
     key = f"artifacts/{request_id}_steps.md"
-    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
-    body = f"Refelction: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"Reflection: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-
-
     return {
-        "iteration": iteration + 1,
-        "final_response": state["final_response"]
+        "reflection": result
+    }
+
+def mcp_tools(state: CostState, config) -> dict:
+    logger.info(f"###### mcp_tools ######")
+    draft = state['final_response']
+
+    result = chat.run_reflection_agent(draft, state["reflection"])
+    logger.info(f"reflection result: {result}")
+    
+    return {
+        "iteration": state["iteration"] + 1,
+        "final_response": draft        
     }
 
 def should_end(state: CostState, config) -> str:
@@ -419,8 +490,8 @@ def should_end(state: CostState, config) -> str:
         logger.info(f"max iteration reached!")
         next = END
     else:
-        logger.info(f"reflection is required!")
-        next = "reflect_context"
+        logger.info(f"additional information is required!")
+        next = "mcp_tools"
 
     return next
 
@@ -432,6 +503,7 @@ agent = CostAgent(
         ("daily_cost", daily_cost),
         ("generate_insight", generate_insight),
         ("reflect_context", reflect_context),
+        ("mcp_tools", mcp_tools),
         ("should_end", should_end),
     ],
 )
@@ -457,18 +529,9 @@ def run(request_id: str):
     output_images = f"![{task}]({url})\n\n"
     body = f"## {task}\n\n{output_images}"
     chat.updata_object(key, body, 'prepend')
-    
-    # graph_diagram = agent.get_graph().draw_mermaid_png()
-    # url = get_url(graph_diagram, "Workflow")
-
-    # task = "실행 계획"
-    # output_images = f"![{task}]({url})\n\n"
-    # body = f"## {task}\n\n{output_images}"
-    # chat.updata_object(key, body, 'prepend')
 
     # make a report
-    question = "AWS 사용량을 분석하세요."
-        
+    question = "AWS 사용량을 분석하세요."        
     inputs = {
         "messages": [HumanMessage(content=question)],
         "final_response": ""

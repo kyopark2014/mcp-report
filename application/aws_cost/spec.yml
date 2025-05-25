@@ -17,6 +17,7 @@ nodes:
   - name: daily_cost
   - name: generate_insight
   - name: reflect_context
+  - name: mcp_tools
 edges:
   - from: __start__
     to: service_cost
@@ -26,8 +27,10 @@ edges:
     to: daily_cost
   - from: daily_cost
     to: generate_insight
-  - from: reflect_context
-    to: generate_insight
   - from: generate_insight
+    to: reflect_context
+  - from: reflect_context
     condition: should_end
-    paths: [__end__, reflect_context]
+    paths: [__end__, mcp_tools]
+  - from: mcp_tools
+    to: reflect_context

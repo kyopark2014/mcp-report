@@ -108,6 +108,7 @@ def CostAgent(
         "generate_insight",
         "reflect_context",
         "should_end",
+        "mcp_tools",
     }
 
     missing_nodes = expected_implementations - all_names
@@ -127,19 +128,22 @@ def CostAgent(
     builder.add_node("daily_cost", nodes_by_name["daily_cost"])
     builder.add_node("generate_insight", nodes_by_name["generate_insight"])
     builder.add_node("reflect_context", nodes_by_name["reflect_context"])
+    builder.add_node("mcp_tools", nodes_by_name["mcp_tools"])
 
     # Add edges
     builder.add_edge(START, "service_cost")
     builder.add_edge("service_cost", "region_cost")
     builder.add_edge("region_cost", "daily_cost")
     builder.add_edge("daily_cost", "generate_insight")
-    builder.add_edge("reflect_context", "generate_insight")
+    builder.add_edge("generate_insight", "reflect_context")
     builder.add_conditional_edges(
-        "generate_insight",
+        "reflect_context",
         nodes_by_name["should_end"],
         [
             END,
-            "reflect_context",
+            "mcp_tools",
         ],
     )
+    builder.add_edge("mcp_tools", "reflect_context")
+    
     return builder
