@@ -61,6 +61,20 @@ def get_prompt_template(prompt_name: str) -> str:
     # logger.info(f"template: {template}")
     return template
 
+def get_summary(figure, instruction):
+    img_bytes = pio.to_image(figure, format="png")
+    base64_image = base64.b64encode(img_bytes).decode('utf-8')
+    
+    summary = chat.summary_image(base64_image, instruction)
+
+    summary = summary.split("<result>")[1].split("</result>")[0]
+    logger.info(f"summary: {summary}")
+
+    return summary
+
+#########################################################
+# Cost Agent
+#########################################################
 class CostSate(TypedDict):
     messages: Annotated[list, add_messages]
     service_costs: dict
@@ -128,7 +142,10 @@ def service_cost(state: CostSate, config) -> dict:
     key = f"artifacts/{request_id}_steps.md"
     time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
-    body = f"## {task}\n\n{output_images}"
+    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요."
+    summary = get_summary(fig_pie, instruction)
+
+    body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
     return {
@@ -194,7 +211,10 @@ def region_cost(state: CostSate, config) -> dict:
     key = f"artifacts/{request_id}_steps.md"
     time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
-    body = f"## {task}\n\n{output_images}"
+    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요. 여기서 비용 단위는 dollar 입니다."
+    summary = get_summary(fig_bar, instruction)
+
+    body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
     return {
@@ -265,7 +285,10 @@ def daily_cost(state: CostSate, config) -> dict:
     key = f"artifacts/{request_id}_steps.md"
     time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
-    body = f"## {task}\n\n{output_images}"
+    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요. 여기서 비용 단위는 dollar 입니다."
+    summary = get_summary(fig_line, instruction)
+
+    body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
     return {
@@ -318,7 +341,7 @@ def generate_insight(state: CostSate, config) -> dict:
         raise Exception ("Not able to request to LLM")
     
     key = f"artifacts/{request_id}_report.md"
-    chat.create_object(key, state["final_response"] + response.content)
+    chat.create_object(key, "# AWS 사용량 분석\n" + state["final_response"] + response.content)
 
     return {
         "final_response": state["final_response"] + response.content + "\n\n"
