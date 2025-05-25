@@ -36,18 +36,17 @@
 - [추세 분석 및 예측]
 ```
 
-이때의 AWS 서비스 사용량은 아래와 같습니다.
+## 실행 결과
 
-![image](https://github.com/user-attachments/assets/94dfc329-67f4-409e-8dc6-a912e7a512ed)
+아래와 같은 Plan으로 실행된 것울 알 수 있습니다.
 
-리전별 사용량은 아래와 같이 얻을 수 있습니다.
+![image](https://github.com/user-attachments/assets/5ac86ba4-7aec-44ac-b86a-7796f59a630f)
 
-![image](https://github.com/user-attachments/assets/029b6874-ed52-4185-a3b3-e1288009b812)
+순차적으로 실행된 결과를 확인합니다.
 
-일자별 사용량은 아래와 같습니다.
+![image](https://github.com/user-attachments/assets/6bb11532-e02f-499c-bf87-8884daae1161)
 
-![image](https://github.com/user-attachments/assets/4a565709-2f0e-4265-864a-06e0f933c5c5)
+최종 결과는 아래와 같이 보여집니다.
 
-이를 분석한 최종 결과를 아래와 같습니다.
+![image](https://github.com/user-attachments/assets/e9d6cd62-0ee8-4641-ac0e-3359dbdf552f)
 
-![image](https://github.com/user-attachments/assets/27e4dee4-325d-48b1-b4fb-d4aa4a388a6b)
