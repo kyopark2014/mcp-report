@@ -135,15 +135,15 @@ def CostAgent(
     builder.add_edge("service_cost", "region_cost")
     builder.add_edge("region_cost", "daily_cost")
     builder.add_edge("daily_cost", "generate_insight")
-    builder.add_edge("generate_insight", "reflect_context")
     builder.add_conditional_edges(
-        "reflect_context",
+        "generate_insight",
         nodes_by_name["should_end"],
         [
             END,
-            "mcp_tools",
+            "reflect_context",
         ],
     )
-    builder.add_edge("mcp_tools", "reflect_context")
+    builder.add_edge("reflect_context", "mcp_tools")
+    builder.add_edge("mcp_tools", "generate_insight")
     
     return builder

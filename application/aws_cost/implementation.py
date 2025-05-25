@@ -111,43 +111,31 @@ def reflect(draft):
         "search_queries": search_queries
     }
 
-def revise_draft(draft, reflection, search_queries):   
+def revise_draft(draft, context):   
     logger.info(f"###### revise_draft ######")
         
-    system = """Revise your previous answer using the new information. 
-You should use the previous critique to add important information to your answer. provide the final answer with <result> tag. 
-<critique>
-{reflection}
-</critique>
-
-<information>
-{content}
-</information>"""
-
-    human = "<draft>{draft}</draft>"
+    system = (
+        "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
+        "당신이 작성하여야 할 보고서 <draft>의 소제목과 기본 포맷을 유지한 상태에서, 다음의 <context>의 내용을 추가합니다."
+        "초등학생도 쉽게 이해하도록 풀어서 씁니다."
+    )
+    human = (
+        "<draft>{draft}</draft>"
+        "<context>{context}</context>"
+    )
                 
     reflection_prompt = ChatPromptTemplate.from_messages(
         [
             ("system", system),
             ("human", human)
         ]
-    )
-        
-    content = []            
-    for q in search_queries:
-        response = enhanced_search(q, config)
-        print(f'q: {q}, response: {response}')
-        content.append(response)                   
-
+    )        
     reflect = reflection_prompt | chat.get_chat(extended_thinking="Disable")
         
-    result = reflect.invoke(
-        {
-            "draft": draft,
-            "reflection": reflection,
-            "content": content
-        }
-    )   
+    result = reflect.invoke({
+        "draft": draft,
+        "context": context
+    })   
     logger.info(f"result: {result.content}")
                             
     return result.content
@@ -156,11 +144,11 @@ You should use the previous critique to add important information to your answer
 # Cost Agent
 #########################################################
 class CostState(TypedDict):
-    messages: Annotated[list, add_messages]
     service_costs: dict
     region_costs: dict
     daily_costs: dict
-    draft: str
+    additonal_context: list[str]
+    appendix: list[str]
     iteration: int
     reflection: list[str]
     final_response: str    
@@ -231,12 +219,12 @@ def service_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    draft = state["draft"] if "draft" in state else ""
+    appendix = state["appendix"] if "appendix" in state else []
+    appendix.append(body)
 
     return {
-        "messages": [AIMessage(content=body)],
+        "appendix": appendix,
         "service_costs": service_response,
-        "draft": draft + body + "\n\n"
     }
 
 def region_cost(state: CostState, config) -> dict:
@@ -302,12 +290,12 @@ def region_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    draft = state["draft"] if "draft" in state else ""
+    appendix = state["appendix"] if "appendix" in state else []
+    appendix.append(body)
 
     return {
-        "messages": [AIMessage(content=body)],
-        "region_costs": region_response,
-        "draft": draft + body + "\n\n"
+        "appendix": appendix,
+        "region_costs": region_response
     }
 
 def daily_cost(state: CostState, config) -> dict:
@@ -378,20 +366,20 @@ def daily_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    draft = state["draft"] if "draft" in state else ""
+    appendix = state["appendix"] if "appendix" in state else []
+    appendix.append(body)
 
     return {
-        "messages": [AIMessage(content=body)],
-        "daily_costs": daily_response,
-        "draft": draft + body + "\n\n"
+        "appendix": appendix,
+        "daily_costs": daily_response
     }
 
 def generate_insight(state: CostState, config) -> dict:
     logger.info(f"###### generate_insight ######")
 
     prompt_name = "cost_insight"
-
     request_id = config.get("configurable", {}).get("request_id", "")    
+    additonal_context = state["additonal_context"] if "additonal_context" in state else []
 
     system_prompt=get_prompt_template(prompt_name)
     logger.info(f"system_prompt: {system_prompt}")
@@ -402,6 +390,7 @@ def generate_insight(state: CostState, config) -> dict:
         "<service_costs>{service_costs}</service_costs>"
         "<region_costs>{region_costs}</region_costs>"
         "<daily_costs>{daily_costs}</daily_costs>"
+        "<additonal_context>{additonal_context}</additonal_context>"
     )
 
     prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human)])
@@ -419,7 +408,8 @@ def generate_insight(state: CostState, config) -> dict:
             {
                 "service_costs": service_costs,
                 "region_costs": region_costs,
-                "daily_costs": daily_costs
+                "daily_costs": daily_costs,
+                "additonal_context": additonal_context
             }
         )
         logger.info(f"response: {response.content}")
@@ -434,28 +424,27 @@ def generate_insight(state: CostState, config) -> dict:
     time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
     chat.updata_object(key, time + response.content, 'append')
     
-    # the first report
+    # report.md
     key = f"artifacts/{request_id}_report.md"
-    draft = state["draft"] if "draft" in state else ""
-    body = "# AWS 사용량 분석\n" + draft + response.content    
-    logger.info(f"body: {body}")        
-    chat.create_object(key, body)
+    body = "# AWS 사용량 분석\n\n" + response.content + "\n\n"  
+
+    appendix = state["appendix"] if "appendix" in state else []
+    values = '\n\n'.join(appendix)
+
+    logger.info(f"body: {body}")
+    chat.updata_object(key, time+body+values, 'prepend')
+
+    iteration = state["iteration"] if "iteration" in state else 0
 
     return {
-        "final_response": body,
-        "iteration": 0
+        "final_response": body+values,
+        "iteration": iteration+1
     }
 
 def reflect_context(state: CostState, config) -> dict:
     logger.info(f"###### reflect_context ######")
-    iteration = state["iteration"] if "iteration" in state else 0
-    if iteration >= config.get("configurable", {}).get("max_iteration", 1):
-        logger.info(f"go to END")
-        return {
-            "final_response": state["final_response"]
-        }
 
-    # reflect the previous final response    
+    # earn reflection from the previous final response    
     result = reflect(state["final_response"])
     logger.info(f"reflection result: {result}")
 
@@ -474,24 +463,42 @@ def mcp_tools(state: CostState, config) -> dict:
     logger.info(f"###### mcp_tools ######")
     draft = state['final_response']
 
-    result = chat.run_reflection_agent(draft, state["reflection"])
-    logger.info(f"reflection result: {result}")
+    reflection_result = chat.run_reflection_agent(draft, state["reflection"])
+    logger.info(f"reflection result: {reflection_result}")
+
+    # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"{reflection_result}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    # revised_draft = revise_draft(draft, reflection_result)
+
+    # logger.info(f"draft: {draft}")
+    # logger.info(f"revised_draft: {revised_draft}")
+
+    # # logging in step.md
+    # request_id = config.get("configurable", {}).get("request_id", "")
+    # key = f"artifacts/{request_id}_steps.md"
+    # time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    # body = f"{revised_draft}\n\n"
+    # chat.updata_object(key, time + body, 'append')
     
     return {
-        "iteration": state["iteration"] + 1,
-        "final_response": draft        
+        "additonal_context": reflection_result
     }
 
 def should_end(state: CostState, config) -> str:
     logger.info(f"###### should_end ######")
     iteration = state["iteration"] if "iteration" in state else 0
     
-    if iteration >= config.get("configurable", {}).get("max_iteration", 1):
+    if iteration > config.get("configurable", {}).get("max_iteration", 1):
         logger.info(f"max iteration reached!")
         next = END
     else:
         logger.info(f"additional information is required!")
-        next = "mcp_tools"
+        next = "reflect_context"
 
     return next
 

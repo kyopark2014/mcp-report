@@ -2129,13 +2129,13 @@ async def reflection_mcp_agent(draft, reflection):
             for image in image_url:
                 logger.info(f"image: {image}")
 
-            references = extract_reference(response["messages"])                
-            if references:
-                ref = "\n\n### Reference\n"
-                for i, reference in enumerate(references):
-                    ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
-                logger.info(f"ref: {ref}")
-                result += ref
+            # references = extract_reference(response["messages"])                
+            # if references:
+            #     ref = "\n\n### Reference\n"
+            #     for i, reference in enumerate(references):
+            #         ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
+            #     logger.info(f"ref: {ref}")
+            #     result += ref
 
             # logger.info(f"result: {result}")
             return result

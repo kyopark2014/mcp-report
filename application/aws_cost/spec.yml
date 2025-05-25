@@ -28,9 +28,8 @@ edges:
   - from: daily_cost
     to: generate_insight
   - from: generate_insight
-    to: reflect_context
+    paths: [__end__, reflect_context]
   - from: reflect_context
-    condition: should_end
-    paths: [__end__, mcp_tools]
+    to: mcp_tools
   - from: mcp_tools
-    to: reflect_context
+    to: generate_insight
