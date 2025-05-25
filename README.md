@@ -46,6 +46,8 @@
 
 ![image](https://github.com/user-attachments/assets/128220ae-abfd-4f97-8752-cd4c829853d1)
 
+![image](https://github.com/user-attachments/assets/420c185b-9ad6-4b28-af5d-bcb2ac98ece0)
+
 최종 결과는 아래와 같이 보여집니다.
 
 ![image](https://github.com/user-attachments/assets/88ef1051-8663-43bb-ac79-84d0d335d7d5)
