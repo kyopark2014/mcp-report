@@ -1,5 +1,6 @@
-# mcp-report
-It show how to make a report using mcp.
+# MCP를 이용한 보고서 작성
+
+여기에서는 MCP로 agent를 생성하여 다양한 보고서를 생성하는 방법에 대해 설명합니다.
 
 ## Workflow를 이용한 비용 분석
 
