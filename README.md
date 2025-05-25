@@ -48,5 +48,5 @@
 
 최종 결과는 아래와 같이 보여집니다.
 
-![image](https://github.com/user-attachments/assets/e9d6cd62-0ee8-4641-ac0e-3359dbdf552f)
+![image](https://github.com/user-attachments/assets/88ef1051-8663-43bb-ac79-84d0d335d7d5)
 
