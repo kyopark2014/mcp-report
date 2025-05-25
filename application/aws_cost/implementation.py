@@ -16,7 +16,7 @@ from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.constants import START, END
 from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
-from IPython.display import Image
+from pydantic import BaseModel, Field
 
 import pandas as pd
 import plotly.express as px
@@ -72,18 +72,58 @@ def get_summary(figure, instruction):
 
     return summary
 
+# Reflection
+class Reflection(BaseModel):
+    missing: str = Field(description="Critique of what is missing.")
+    advisable: str = Field(description="Critique of what is helpful for better answer")
+    superfluous: str = Field(description="Critique of what is superfluous")
+
+class Research(BaseModel):
+    """Provide reflection and then follow up with search queries to improve the answer."""
+
+    reflection: Reflection = Field(description="Your reflection on the initial answer.")
+    search_queries: list[str] = Field(
+        description="1-3 search queries for researching improvements to address the critique of your current answer."
+    )
+    
+def reflect(draft):
+    logger.info(f"###### reflect ######")
+
+    reflection = []
+    search_queries = []
+    for attempt in range(5):
+        llm = chat.get_chat(extended_thinking="Disable")
+        structured_llm = llm.with_structured_output(Research, include_raw=True)
+        
+        info = structured_llm.invoke(draft)
+        logger.info(f'attempt: {attempt}, info: {info}')
+            
+        if not info['parsed'] == None:
+            parsed_info = info['parsed']
+            reflection = [parsed_info.reflection.missing, parsed_info.reflection.advisable]
+            logger.info(f"reflection: {reflection}")
+            search_queries = parsed_info.search_queries
+            logger.info(f"search_queries: {search_queries}")            
+            break
+    
+    return {
+        "reflection": reflection,
+        "search_queries": search_queries
+    }
+
 #########################################################
 # Cost Agent
 #########################################################
-class CostSate(TypedDict):
+class CostState(TypedDict):
     messages: Annotated[list, add_messages]
     service_costs: dict
     region_costs: dict
     daily_costs: dict
     final_response: str
+    iteration: int
 
 # Define stand-alone functions
-def service_cost(state: CostSate, config) -> dict:
+def service_cost(state: CostState, config) -> dict:
     logger.info(f"###### service_cost ######")
 
     logger.info(f"Getting cost analysis...")
@@ -154,7 +194,7 @@ def service_cost(state: CostSate, config) -> dict:
         "final_response": state["final_response"] + body + "\n\n"
     }
 
-def region_cost(state: CostSate, config) -> dict:
+def region_cost(state: CostState, config) -> dict:
     logger.info(f"###### region_cost ######")
 
     logger.info(f"Getting cost analysis...")
@@ -223,7 +263,7 @@ def region_cost(state: CostSate, config) -> dict:
         "final_response": state["final_response"] + body + "\n\n"
     }
 
-def daily_cost(state: CostSate, config) -> dict:
+def daily_cost(state: CostState, config) -> dict:
     logger.info(f"###### daily_cost ######")
     logger.info(f"Getting cost analysis...")
     days = 30
@@ -297,7 +337,7 @@ def daily_cost(state: CostSate, config) -> dict:
         "final_response": state["final_response"] + body + "\n\n"
     }
 
-def generate_insight(state: CostSate, config) -> dict:
+def generate_insight(state: CostState, config) -> dict:
     logger.info(f"###### generate_insight ######")
 
     prompt_name = "cost_insight"
@@ -341,30 +381,51 @@ def generate_insight(state: CostSate, config) -> dict:
         raise Exception ("Not able to request to LLM")
     
     key = f"artifacts/{request_id}_report.md"
-    chat.create_object(key, "# AWS 사용량 분석\n" + state["final_response"] + response.content)
+    body = "# AWS 사용량 분석\n" + state["final_response"] + response.content
+    chat.create_object(key, body)
 
     return {
-        "final_response": state["final_response"] + response.content + "\n\n"
+        "final_response": body
     }
 
-def reflect_context(state: CostSate) -> dict:
+def reflect_context(state: CostState, config) -> dict:
     logger.info(f"###### reflect_context ######")
+    iteration = state["iteration"] if "iteration" in state else 0
+
+    request_id = config.get("configurable", {}).get("request_id", "")
+
+    draft = state["final_response"]
+    result = reflect(draft)
+    logger.info(f"reflection result: {result}")
+
+    # logging in step.md
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"Refelction: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+
+
     return {
-        # Add your state update logic here
+        "iteration": iteration + 1,
+        "final_response": state["final_response"]
     }
 
-def should_end(state: CostSate) -> str:
+def should_end(state: CostState, config) -> str:
     logger.info(f"###### should_end ######")
-    if "final_response" in state and state["final_response"] != "":
+    iteration = state["iteration"] if "iteration" in state else 0
+    
+    if iteration >= config.get("configurable", {}).get("max_iteration", 1):
+        logger.info(f"max iteration reached!")
         next = END
     else:
-        logger.info(f"final_response is empty")
-        next = END
+        logger.info(f"reflection is required!")
+        next = "reflect_context"
 
     return next
 
 agent = CostAgent(
-    state_schema=CostSate,
+    state_schema=CostState,
     impl=[
         ("service_cost", service_cost),
         ("region_cost", region_cost),
@@ -414,7 +475,8 @@ def run(request_id: str):
     }
     config = {
         "request_id": request_id,
-        "recursion_limit": 50
+        "recursion_limit": 50,
+        "max_iteration": 1
     }
 
     value = None

@@ -15,53 +15,53 @@ from typing_extensions import TypedDict
 
 from stub import CostAgent
 
-class CostSate(TypedDict):
+class CostState(TypedDict):
     # define your attributes here
     foo: str
 
 # Define stand-alone functions
-def service_cost(state: CostSate) -> dict:
+def service_cost(state: CostState) -> dict:
     print("In node: service_cost")
     return {
         # Add your state update logic here
     }
 
 
-def region_cost(state: CostSate) -> dict:
+def region_cost(state: CostState) -> dict:
     print("In node: region_cost")
     return {
         # Add your state update logic here
     }
 
 
-def daily_cost(state: CostSate) -> dict:
+def daily_cost(state: CostState) -> dict:
     print("In node: daily_cost")
     return {
         # Add your state update logic here
     }
 
 
-def generate_insight(state: CostSate) -> dict:
+def generate_insight(state: CostState) -> dict:
     print("In node: generate_insight")
     return {
         # Add your state update logic here
     }
 
 
-def reflect_context(state: CostSate) -> dict:
+def reflect_context(state: CostState) -> dict:
     print("In node: reflect_context")
     return {
         # Add your state update logic here
     }
 
 
-def should_end(state: CostSate) -> str:
+def should_end(state: CostState) -> str:
     print("In condition: should_end")
     raise NotImplementedError("Implement me.")
 
 
 agent = CostAgent(
-    state_schema=CostSate,
+    state_schema=CostState,
     impl=[
         ("service_cost", service_cost),
         ("region_cost", region_cost),
