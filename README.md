@@ -44,7 +44,7 @@
 
 순차적으로 실행된 결과를 확인합니다.
 
-![image](https://github.com/user-attachments/assets/6bb11532-e02f-499c-bf87-8884daae1161)
+![image](https://github.com/user-attachments/assets/128220ae-abfd-4f97-8752-cd4c829853d1)
 
 최종 결과는 아래와 같이 보여집니다.
 
