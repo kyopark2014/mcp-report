@@ -1,9 +1,9 @@
 # mcp-report
 It show how to make a report using mcp.
 
-## 비용 분석
+## Workflow를 이용한 비용 분석
 
-비용분석을 위한 Workflow는 아래와 같습니다.
+비용분석을 위한 Workflow는 아래와 같이 정의합니다.
 
 ![image](https://github.com/user-attachments/assets/6851465d-1365-4b50-b873-eab2538bf552)
 
