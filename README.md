@@ -4,7 +4,7 @@
 
 ## Workflow를 이용한 비용 분석
 
-비용분석을 위한 Workflow는 아래와 같이 정의합니다.
+비용분석을 위한 Workflow는 아래와 같이 정의합니다. [AWS Cost Explorer]를 이용해, 서비스별, 리전별, 기간별 사용량 데이터를 가져옵니다. 이후 정해진 서식에 맞추어 보고서를 생성합니다. 생성된 보고서에 부족한 부분은 MCP를 이용해 얻어진 aws document, aws cli를 이용해 결과를 업데이트합니다.
 
 ![image](https://github.com/user-attachments/assets/6851465d-1365-4b50-b873-eab2538bf552)
 
