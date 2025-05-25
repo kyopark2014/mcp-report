@@ -40,13 +40,13 @@
 
 아래와 같은 Plan으로 실행된 것울 알 수 있습니다.
 
-<img src="https://github.com/user-attachments/assets/5ac86ba4-7aec-44ac-b86a-7796f59a630f" width="300">
+<img src="https://github.com/user-attachments/assets/5ac86ba4-7aec-44ac-b86a-7796f59a630f" width="250">
 
 순차적으로 실행된 결과를 확인합니다.
 
-<img src="https://github.com/user-attachments/assets/420c185b-9ad6-4b28-af5d-bcb2ac98ece0" width="700">
+<img src="https://github.com/user-attachments/assets/420c185b-9ad6-4b28-af5d-bcb2ac98ece0" width="750">
 
 최종 결과는 아래와 같이 보여집니다.
 
-<img src="https://github.com/user-attachments/assets/88ef1051-8663-43bb-ac79-84d0d335d7d5" width="700">
+<img src="https://github.com/user-attachments/assets/88ef1051-8663-43bb-ac79-84d0d335d7d5" width="750">
 
