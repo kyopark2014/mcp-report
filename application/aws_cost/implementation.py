@@ -147,7 +147,7 @@ class CostState(TypedDict):
     service_costs: dict
     region_costs: dict
     daily_costs: dict
-    additonal_context: list[str]
+    additional_context: list[str]
     appendix: list[str]
     iteration: int
     reflection: list[str]
@@ -379,7 +379,7 @@ def generate_insight(state: CostState, config) -> dict:
 
     prompt_name = "cost_insight"
     request_id = config.get("configurable", {}).get("request_id", "")    
-    additonal_context = state["additonal_context"] if "additonal_context" in state else []
+    additional_context = state["additional_context"] if "additional_context" in state else []
 
     system_prompt=get_prompt_template(prompt_name)
     logger.info(f"system_prompt: {system_prompt}")
@@ -390,7 +390,9 @@ def generate_insight(state: CostState, config) -> dict:
         "<service_costs>{service_costs}</service_costs>"
         "<region_costs>{region_costs}</region_costs>"
         "<daily_costs>{daily_costs}</daily_costs>"
-        "<additonal_context>{additonal_context}</additonal_context>"
+
+        "다음의 additional_context는 관련된 다른 보고서입니다. 이 보고서를 현재 작성하는 보고서에 추가해주세요. 단, 전체적인 문맥에 영향을 주면 안됩니다."
+        "<additional_context>{additional_context}</additional_context>"
     )
 
     prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human)])
@@ -409,7 +411,7 @@ def generate_insight(state: CostState, config) -> dict:
                 "service_costs": service_costs,
                 "region_costs": region_costs,
                 "daily_costs": daily_costs,
-                "additonal_context": additonal_context
+                "additional_context": additional_context
             }
         )
         logger.info(f"response: {response.content}")
@@ -473,20 +475,11 @@ def mcp_tools(state: CostState, config) -> dict:
     body = f"{reflection_result}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    # revised_draft = revise_draft(draft, reflection_result)
+    additional_context = state["additional_context"] if "additional_context" in state else []
+    additional_context.append(reflection_result)
 
-    # logger.info(f"draft: {draft}")
-    # logger.info(f"revised_draft: {revised_draft}")
-
-    # # logging in step.md
-    # request_id = config.get("configurable", {}).get("request_id", "")
-    # key = f"artifacts/{request_id}_steps.md"
-    # time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
-    # body = f"{revised_draft}\n\n"
-    # chat.updata_object(key, time + body, 'append')
-    
     return {
-        "additonal_context": reflection_result
+        "additional_context": additional_context
     }
 
 def should_end(state: CostState, config) -> str:
