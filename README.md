@@ -8,7 +8,7 @@
 
 <img src="https://github.com/user-attachments/assets/23c05fec-cf67-48ef-8bdd-c1f13539174e" width="400">
 
-비용 분석에 대한 리포트는 아래와 같이 주어진 [cost_insight.md](./application/aws_cost/cost_insight.md)는 아래와 같습니다.
+비용 분석에 대한 리포트는 아래와 같이 [cost_insight.md](./application/aws_cost/cost_insight.md)을 참조합니다.
 
 ```text
 당신의 AWS solutions architect입니다.
