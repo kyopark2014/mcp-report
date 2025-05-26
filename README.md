@@ -36,6 +36,78 @@
 - [추세 분석 및 예측]
 ```
 
+## 상세 구현
+
+LangGraph Builder로 구현된 graph는 [stub.py](./application/aws_cost/stub.py)와 같이 구현됩니다. 이 코드는 LangGraph에 자동 생성된 코드에서 Agent이름만을 수정하였습니다.
+
+```python
+def CostAgent(
+    *,
+    state_schema: Optional[Type[Any]] = None,
+    config_schema: Optional[Type[Any]] = None,
+    input: Optional[Type[Any]] = None,
+    output: Optional[Type[Any]] = None,
+    impl: list[tuple[str, Callable]],
+) -> StateGraph:
+    """Create the state graph for CostAgent."""
+    # Declare the state graph
+    builder = StateGraph(
+        state_schema, config_schema=config_schema, input=input, output=output
+    )
+
+    nodes_by_name = {name: imp for name, imp in impl}
+
+    all_names = set(nodes_by_name)
+
+    expected_implementations = {
+        "service_cost",
+        "region_cost",
+        "daily_cost",
+        "generate_insight",
+        "reflect_context",
+        "should_end",
+        "mcp_tools",
+    }
+
+    missing_nodes = expected_implementations - all_names
+    if missing_nodes:
+        raise ValueError(f"Missing implementations for: {missing_nodes}")
+
+    extra_nodes = all_names - expected_implementations
+
+    if extra_nodes:
+        raise ValueError(
+            f"Extra implementations for: {extra_nodes}. Please regenerate the stub."
+        )
+
+    # Add nodes
+    builder.add_node("service_cost", nodes_by_name["service_cost"])
+    builder.add_node("region_cost", nodes_by_name["region_cost"])
+    builder.add_node("daily_cost", nodes_by_name["daily_cost"])
+    builder.add_node("generate_insight", nodes_by_name["generate_insight"])
+    builder.add_node("reflect_context", nodes_by_name["reflect_context"])
+    builder.add_node("mcp_tools", nodes_by_name["mcp_tools"])
+
+    # Add edges
+    builder.add_edge(START, "service_cost")
+    builder.add_edge("service_cost", "region_cost")
+    builder.add_edge("region_cost", "daily_cost")
+    builder.add_edge("daily_cost", "generate_insight")
+    builder.add_conditional_edges(
+        "generate_insight",
+        nodes_by_name["should_end"],
+        [
+            END,
+            "reflect_context",
+        ],
+    )
+    builder.add_edge("reflect_context", "mcp_tools")
+    builder.add_edge("mcp_tools", "generate_insight")
+    
+    return builder
+```
+
+
 ## 실행 결과
 
 아래와 같은 Plan으로 실행된 것울 알 수 있습니다.
