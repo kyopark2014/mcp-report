@@ -40,7 +40,7 @@
 
 ### Agent의 구현
 
-LangGraph Builder로 구현된 graph는 [stub.py](./application/aws_cost/stub.py)와 같이 구현됩니다. 이 코드는 LangGraph에 자동 생성된 코드에서 Agent이름만을 수정하였습니다.
+[LangGraph Builder](https://build.langchain.com/)로 구현된 graph는 [stub.py](./application/aws_cost/stub.py)와 같이 구현됩니다. 이 코드는 LangGraph에 자동 생성된 코드에서 Agent이름만을 수정하였습니다.
 
 ```python
 def CostAgent(
