@@ -107,6 +107,19 @@ def CostAgent(
     return builder
 ```
 
+이때 Node간 데이터 교환을 위해 사용하는 state는 아래와 같습니다. 상세코드는 [implementation.py](./application/aws_cost/implementation.py)를 참조합니다. 여기서 service_costs, region_costs, daily_cost는 Boto3 API를 이용해 획득안 json 형태의 데이터이고, appendix는 그림파일과 설명을 가진 마찬가지로 json 파입니다. additonal_context는 reflection과 MCP tool 활용으로 얻어진 contents가 저장됩니다. iteration은 reflection의 반복 횟수를 의미하고 reflection은 draft의 수정사항과 추가 검색어를 가지고 있습니다. final_response는 최종 답변이 저장됩니다.
+
+```python
+class CostState(TypedDict):
+    service_costs: dict
+    region_costs: dict
+    daily_costs: dict
+    additional_context: list[str]
+    appendix: list[str]
+    iteration: int
+    reflection: list[str]
+    final_response: str
+```
 
 ## 실행 결과
 
