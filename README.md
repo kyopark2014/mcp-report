@@ -38,6 +38,8 @@
 
 ## 상세 구현
 
+### Agent의 구현
+
 LangGraph Builder로 구현된 graph는 [stub.py](./application/aws_cost/stub.py)와 같이 구현됩니다. 이 코드는 LangGraph에 자동 생성된 코드에서 Agent이름만을 수정하였습니다.
 
 ```python
@@ -202,6 +204,8 @@ def service_cost(state: CostState, config) -> dict:
 
 마찬가지로 region과 daily cost를 추출할 수 있습니다. 상세코드는 [implementation.py](./application/aws_cost/implementation.py)를 참조합니다. 
 
+### 초안의 생성
+
 주어진 데이터로 아래와 같이 draft를 생성합니다. Reflection과 MCP tool을 이용해 additional_context을 이용하면 draft를 개선하는 효과가 있습니다. draft 생성시 아래와 같이 [cost_insight.md](./application/aws_cost/cost_insight.md)를 이용하여 기본 포맷을 설정합니다. 따라서 insight 생성시 기본 포맷을 유지하기 위하여 additional_context를 generate_insight, reflection, mcp-tools를 이용해 업데이트를 수행합니다.
 
 ```python
@@ -275,6 +279,8 @@ def generate_insight(state: CostState, config) -> dict:
     }
 ```
 
+### 초안의 개선점 파악
+
 초안(draft)의 개선은 아래와 같이 수행합니다. 진행 결과를 확인하기 위해 중간 결과를 steps.md에 저장합니다.
 
 ```python
@@ -330,6 +336,114 @@ def reflect_context(state: CostState, config) -> dict:
     return {
         "reflection": result
     }
+```
+
+### MCP로 개선(reflection)에 필요한 데이터 획득
+
+아래와 같이 MCP Tools 노드에서 reflection에 필요한 데이터를 가져옵니다. 
+
+```python
+def mcp_tools(state: CostState, config) -> dict:
+    logger.info(f"###### mcp_tools ######")
+    draft = state['final_response']
+
+    reflection_result = chat.run_reflection_agent(draft, state["reflection"])
+    logger.info(f"reflection result: {reflection_result}")
+
+    # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"{reflection_result}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    additional_context = state["additional_context"] if "additional_context" in state else []
+    additional_context.append(reflection_result)
+
+    return {
+        "additional_context": additional_context
+    }
+```
+
+Reflection agent는 아래와 같이 구성합니다. Reflection agent에 대한 상세 코드는 [chat.py](./application/chat.py)를 참조합니다.
+
+```python
+async def reflection_mcp_agent(draft, reflection):
+    global mcp_json
+    logger.info(f"mcp_json: {mcp_json}")
+    
+    server_params = load_multiple_mcp_server_parameters(mcp_json)
+    logger.info(f"server_params: {server_params}")
+
+    async with MultiServerMCPClient(server_params) as client:
+        ref = ""
+        tools = client.get_tools()
+        if debug_mode == "Enable":
+            logger.info(f"tools: {tools}")
+
+        agent, config = create_reflection_agent(tools, draft)
+
+        instraction = reflection['reflection']
+        search_queries = reflection['search_queries']
+        logger.info(f"reflection: {instraction}, search_queries: {search_queries}")
+
+        try:
+            response = await agent.ainvoke({"messages": instraction[0]}, config)
+            result = response["messages"][-1].content
+
+            debug_msgs = get_debug_messages()
+            for msg in debug_msgs:
+                # logger.info(f"msg: {msg}")
+                if "image" in msg:
+                    logger.info(f"image: {msg['image']}")
+                elif "text" in msg:
+                    logger.info(f"text: {msg['text']}")
+
+            image_url = response["image_url"] if "image_url" in response else []
+            logger.info(f"image_url: {image_url}")
+
+            for image in image_url:
+                logger.info(f"image: {image}")
+
+            return result
+        except Exception as e:
+            logger.error(f"Error during agent invocation: {str(e)}")
+            raise Exception(f"Agent invocation failed: {str(e)}")
+```
+
+
+### 개선이 반영된 문서 생성
+
+MCP로 얻어진 데이터를 context에 저장한 후에 아래와 같이 초안의 개선을 수행합니다.
+
+```python
+def revise_draft(draft, context):   
+    logger.info(f"###### revise_draft ######")
+        
+    system = (
+        "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
+        "당신이 작성하여야 할 보고서 <draft>의 소제목과 기본 포맷을 유지한 상태에서, 다음의 <context>의 내용을 추가합니다."
+        "초등학생도 쉽게 이해하도록 풀어서 씁니다."
+    )
+    human = (
+        "<draft>{draft}</draft>"
+        "<context>{context}</context>"
+    )
+                
+    reflection_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("human", human)
+        ]
+    )        
+    reflect = reflection_prompt | chat.get_chat(extended_thinking="Disable")
+        
+    result = reflect.invoke({
+        "draft": draft,
+        "context": context
+    })   
+                            
+    return result.content
 ```
 
 
