@@ -121,6 +121,218 @@ class CostState(TypedDict):
     final_response: str
 ```
 
+### 각종 데이터의 획득
+
+모든 API를 MCP로 하지 않고, report의 기본 데이터는 직접 boto3를 이용해 획득합니다. 아래에서는 service 사용에 대한 정보를 cost explorer를 이용해 수집합니다. 기간은 30일이지만 사용자의 목적에 따라 변경 가능합니다. Service 사용 정보롤 data frame으로 변환후 pie 그래프를 그리고 결과를 appendex로 저장합니다. 언어모델인 LLM은 figure와 같은 URL 정보를 최종 결과에 누락할 수 있으므로 별도로 관리합니다. 
+
+```python
+def service_cost(state: CostState, config) -> dict:
+    logger.info(f"###### service_cost ######")
+
+    logger.info(f"Getting cost analysis...")
+    days = 30
+
+    request_id = config.get("configurable", {}).get("request_id", "")
+
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # cost explorer
+        ce = boto3.client('ce')
+
+        # service cost
+        service_response = ce.get_cost_and_usage(
+            TimePeriod={
+                'Start': start_date.strftime('%Y-%m-%d'),
+                'End': end_date.strftime('%Y-%m-%d')
+            },
+            Granularity='MONTHLY',
+            Metrics=['UnblendedCost'],
+            GroupBy=[{'Type': 'DIMENSION', 'Key': 'SERVICE'}]
+        )
+        logger.info(f"service_response: {service_response}")
+
+    except Exception as e:
+        logger.info(f"Error in cost analysis: {str(e)}")
+        return None
+    
+    service_costs = pd.DataFrame([
+        {
+            'SERVICE': group['Keys'][0],
+            'cost': float(group['Metrics']['UnblendedCost']['Amount'])
+        }
+        for group in service_response['ResultsByTime'][0]['Groups']
+    ])
+    logger.info(f"Service Costs: {service_costs}")
+    
+    # service cost (pie chart)
+    fig_pie = px.pie(
+        service_costs,
+        values='cost',
+        names='SERVICE',
+        color='SERVICE',
+        title='Service Cost',
+        template='plotly_white',  # Clean background
+        color_discrete_sequence=px.colors.qualitative.Set3  # Color palette
+    )    
+
+    url = get_url(fig_pie, "service_cost")
+
+    task = "AWS 서비스 사용량"
+    output_images = f"![{task} 그래프]({url})\n\n"
+
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요."
+    summary = get_summary(fig_pie, instruction)
+
+    body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    appendix = state["appendix"] if "appendix" in state else []
+    appendix.append(body)
+
+    return {
+        "appendix": appendix,
+        "service_costs": service_response,
+    }
+```
+
+마찬가지로 region과 daily cost를 추출할 수 있습니다. 상세코드는 [implementation.py](./application/aws_cost/implementation.py)를 참조합니다. 
+
+주어진 데이터로 아래와 같이 draft를 생성합니다. Reflection과 MCP tool을 이용해 additional_context을 이용하면 draft를 개선하는 효과가 있습니다. draft 생성시 아래와 같이 [cost_insight.md](./application/aws_cost/cost_insight.md)를 이용하여 기본 포맷을 설정합니다. 따라서 insight 생성시 기본 포맷을 유지하기 위하여 additional_context를 generate_insight, reflection, mcp-tools를 이용해 업데이트를 수행합니다.
+
+```python
+def generate_insight(state: CostState, config) -> dict:
+    logger.info(f"###### generate_insight ######")
+
+    prompt_name = "cost_insight"
+    request_id = config.get("configurable", {}).get("request_id", "")    
+    additional_context = state["additional_context"] if "additional_context" in state else []
+
+    system_prompt=get_prompt_template(prompt_name)
+    logger.info(f"system_prompt: {system_prompt}")
+
+    human = (
+        "다음 AWS 비용 데이터를 분석하여 상세한 인사이트를 제공해주세요:"
+        "Cost Data:"
+        "<service_costs>{service_costs}</service_costs>"
+        "<region_costs>{region_costs}</region_costs>"
+        "<daily_costs>{daily_costs}</daily_costs>"
+
+        "다음의 additional_context는 관련된 다른 보고서입니다. 이 보고서를 현재 작성하는 보고서에 추가해주세요. 단, 전체적인 문맥에 영향을 주면 안됩니다."
+        "<additional_context>{additional_context}</additional_context>"
+    )
+
+    prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human)])
+    logger.info(f'prompt: {prompt}')    
+
+    llm = chat.get_chat(extended_thinking="Disable")
+    chain = prompt | llm
+
+    service_costs = json.dumps(state["service_costs"])
+    region_costs = json.dumps(state["region_costs"])
+    daily_costs = json.dumps(state["daily_costs"])
+
+    try:
+        response = chain.invoke(
+            {
+                "service_costs": service_costs,
+                "region_costs": region_costs,
+                "daily_costs": daily_costs,
+                "additional_context": additional_context
+            }
+        )
+        logger.info(f"response: {response.content}")
+
+    except Exception:
+        err_msg = traceback.format_exc()
+        logger.debug(f"error message: {err_msg}")                    
+        raise Exception ("Not able to request to LLM")
+    
+    # logging in step.md
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    chat.updata_object(key, time + response.content, 'append')
+    
+    # report.md
+    key = f"artifacts/{request_id}_report.md"
+    body = "# AWS 사용량 분석\n\n" + response.content + "\n\n"  
+
+    appendix = state["appendix"] if "appendix" in state else []
+    values = '\n\n'.join(appendix)
+
+    logger.info(f"body: {body}")
+    chat.updata_object(key, time+body+values, 'prepend')
+
+    iteration = state["iteration"] if "iteration" in state else 0
+
+    return {
+        "final_response": body+values,
+        "iteration": iteration+1
+    }
+```
+
+초안(draft)의 개선은 아래와 같이 수행합니다. 진행 결과를 확인하기 위해 중간 결과를 steps.md에 저장합니다.
+
+```python
+class Reflection(BaseModel):
+    missing: str = Field(description="Critique of what is missing.")
+    advisable: str = Field(description="Critique of what is helpful for better answer")
+    superfluous: str = Field(description="Critique of what is superfluous")
+
+class Research(BaseModel):
+    """Provide reflection and then follow up with search queries to improve the answer."""
+
+    reflection: Reflection = Field(description="Your reflection on the initial answer.")
+    search_queries: list[str] = Field(
+        description="1-3 search queries for researching improvements to address the critique of your current answer."
+    )
+    
+def reflect(draft):
+    logger.info(f"###### reflect ######")
+
+    reflection = []
+    search_queries = []
+    for attempt in range(5):
+        llm = chat.get_chat(extended_thinking="Disable")
+        structured_llm = llm.with_structured_output(Research, include_raw=True)
+        
+        info = structured_llm.invoke(draft)
+        logger.info(f'attempt: {attempt}, info: {info}')
+            
+        if not info['parsed'] == None:
+            parsed_info = info['parsed']
+            reflection = [parsed_info.reflection.missing, parsed_info.reflection.advisable]
+            logger.info(f"reflection: {reflection}")
+            search_queries = parsed_info.search_queries
+            logger.info(f"search_queries: {search_queries}")            
+            break
+    
+    return {
+        "reflection": reflection,
+        "search_queries": search_queries
+    }
+
+def reflect_context(state: CostState, config) -> dict:
+    # earn reflection from the previous final response    
+    result = reflect(state["final_response"])
+
+    # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"Reflection: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    return {
+        "reflection": result
+    }
+```
+
+
 ## 실행 결과
 
 아래와 같은 Plan으로 실행된 것울 알 수 있습니다.
