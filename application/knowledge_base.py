@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("knowledge_base")
 
-config = utils.load_config()
+config, environment = utils.load_config()
 
 # variables
 projectName = config["projectName"] if "projectName" in config else "langgraph-nova"
@@ -34,7 +34,7 @@ s3_bucket = config["s3_bucket"] if "s3_bucket" in config else None
 if s3_bucket is None:
     raise Exception ("No storage!")
 
-parsingModelArn = f"arn:aws:bedrock:{region}::foundation-model/us.anthropic.claude-3-5-sonnet-20241022-v2:0"
+parsingModelArn = f"arn:aws:bedrock:{region}::foundation-model/anthropic.claude-3-5-sonnet-20241022-v2:0"
 embeddingModelArn = f"arn:aws:bedrock:{region}::foundation-model/amazon.titan-embed-text-v2:0"
 
 collectionArn = config["collectionArn"] if "collectionArn" in config else None
@@ -213,12 +213,11 @@ def initiate_knowledge_base():
                             'embeddingModelArn': embeddingModelArn,
                             'embeddingModelConfiguration': {
                                 'bedrockEmbeddingModelConfiguration': {
-                                    'dimensions': 1024,
-                                    'embeddingDataType': 'FLOAT32'
+                                    'dimensions': 1024
                                 }
                             },
                             'supplementalDataStorageConfiguration': {
-                                'storageLocations': [{
+                            'storageLocations': [{
                                     'type': 'S3',
                                     's3Location': {
                                         'uri': f"s3://{s3_bucket}"
@@ -311,14 +310,15 @@ def initiate_knowledge_base():
                         }
                     },
                     'parsingConfiguration': {
-                        # 'bedrockFoundationModelConfiguration': {
-                        #     'modelArn': parsingModelArn
-                        # },
-                        # 'parsingStrategy': 'BEDROCK_FOUNDATION_MODEL'
-                        'bedrockDataAutomationConfiguration': {
+                        'bedrockFoundationModelConfiguration': {
+                            'modelArn': parsingModelArn,
                             'parsingModality': 'MULTIMODAL'
                         },
-                        'parsingStrategy': 'BEDROCK_DATA_AUTOMATION'
+                        'parsingStrategy': 'BEDROCK_FOUNDATION_MODEL'
+                        # 'bedrockDataAutomationConfiguration': {
+                        #     'parsingModality': 'MULTIMODAL'
+                        # },
+                        # 'parsingStrategy': 'BEDROCK_DATA_AUTOMATION'
                     }
                 }
             )

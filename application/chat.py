@@ -1571,7 +1571,7 @@ def create_agent(tools, historyMode):
             response = chain.invoke(state["messages"])
             # logger.info(f"call_model response: {response}")
             logger.info(f"call_model: {response.content}")
-
+            
         except Exception:
             response = AIMessage(content="답변을 찾지 못하였습니다.")
 
@@ -1855,11 +1855,6 @@ async def mcp_agent_multiple(query, mcp_json, historyMode, st):
                 tool_info(tools, st)
                 logger.info(f"tools: {tools}")
 
-            # react agent
-            # model = get_chat(extended_thinking="Disable")
-            # agent = create_react_agent(model, client.get_tools())
-
-            # langgraph agent
             agent, config = create_agent(tools, historyMode)
 
             try:

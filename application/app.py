@@ -324,7 +324,12 @@ if clear_button==False and mode == '비용 분석':
     logger.info(f"report_url: {report_url}")
     st.info(f"report_url: {report_url}")
     
-    response = aws_cost.implementation.run(request_id)
+    # show status and response
+    status_container = st.empty()
+    response_container = st.empty()
+    
+    response = aws_cost.implementation.run(request_id, status_container, response_container)
+    logger.info(f"response: {response}")
 
     st.write(response)
 

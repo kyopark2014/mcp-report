@@ -82,7 +82,6 @@ from typing import Callable, Any, Optional, Type
 from langgraph.constants import START, END
 from langgraph.graph import StateGraph
 
-
 def CostAgent(
     *,
     state_schema: Optional[Type[Any]] = None,
