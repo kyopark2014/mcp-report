@@ -1,7 +1,6 @@
 streamlit==1.41.0
 streamlit-chat
 pandas
-numpy
 boto3
 langchain_aws
 langchain
