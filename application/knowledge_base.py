@@ -20,7 +20,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("knowledge_base")
 
-config, environment = utils.load_config()
+config = utils.load_config()
 
 # variables
 projectName = config["projectName"] if "projectName" in config else "langgraph-nova"
