@@ -119,11 +119,17 @@ AWS Credential을 입력합니다.
 sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 ```
 
+아래와 같이 Dockerfile_ec2를 Dockerfile로 설정합니다.
+
+```text
+sudo runuser -l ec2-user -c "cd mcp-report&&cp Dockerfile_x86 Dockerfile"
+```
+
+
 8) 아래와 같이 docker 이미지를 빌드합니다.
 
 ```text
 sudo runuser -l ec2-user -c "cd mcp-report && docker build -t streamlit-app ."
-sudo runuser -l ec2-user -c "cd mcp-report&&./build.sh"
 ```
 
 9) 아래와 같이 streamlit을 실행합니다.
