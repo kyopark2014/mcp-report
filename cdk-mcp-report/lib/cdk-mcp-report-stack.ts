@@ -725,18 +725,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     const commands = [
       'yum install git python-pip docker -y',
       'pip install pip --upgrade',
-      'yum groupinstall "Development Tools" -y',
-      'yum install openssl-devel bzip2-devel libffi-devel xz-devel -y',
-      'cd /opt',
-      'wget https://www.python.org/ftp/python/3.13.0/Python-3.13.0.tgz',
-      'tar xzf Python-3.13.0.tgz',
-      'cd Python-3.13.0',
-      './configure --enable-optimizations',
-      'make altinstall',
-      'ln -sf /usr/local/bin/python3.13 /usr/bin/python3',
-      'ln -sf /usr/local/bin/python3.13 /usr/bin/python',
-      'ln -sf /usr/local/bin/pip3.13 /usr/bin/pip3',
-      'ln -sf /usr/local/bin/pip3.13 /usr/bin/pip',
       'systemctl start docker',
       'systemctl enable docker',
       'usermod -aG docker ec2-user',
@@ -754,7 +742,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       `runuser -l ec2-user -c 'docker run -d -p 8501:8501 streamlit-app'`
     ];
     userData.addCommands(...commands);
-    
+    /*
     // EC2 instance
     const appInstance = new ec2.Instance(this, `app-for-${projectName}`, {
       instanceName: `app-for-${projectName}`,
@@ -810,6 +798,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     })
     listener.addAction(`RedirectHttpListener-for-${projectName}`, {
       action: defaultAction
-    });   
+    });   */
   }
 }
