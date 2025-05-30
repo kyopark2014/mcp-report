@@ -103,7 +103,7 @@ cdk deploy --require-approval never --all
 [Secret manager](https://us-west-2.console.aws.amazon.com/secretsmanager/listsecrets?region=us-west-2)에 접속하여, [openweathermap-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=openweathermap-mcp-report&region=us-west-2), [tavilyapikey-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=tavilyapikey-mcp-report&region=us-west-2), [langsmithapikey-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=langsmithapikey-mcp-report&region=us-west-2)에 접속하여, [Retrieve secret value]를 선택 후, api key를 입력합니다.
 
 
-6) 만약 Streamlit에서 AWS Credential이 필요하다면, [Console-EC2](https://us-west-2.console.aws.amazon.com/ec2/home?region=us-west-2#Instances:instanceState=running)에서 "app-for-mcp-report"을 선택한 후에 [Connect]를 선택합니다. 여러가지 옵션 중에서 Session Manager를 선택한 후에 [connect]를 접속한 후에 console로 접속합니다. 아래 명령어를 이용하여 ec2-user에 AWS Credential을 입력합니다.
+6) [Console-EC2](https://us-west-2.console.aws.amazon.com/ec2/home?region=us-west-2#Instances:instanceState=running)에서 "app-for-mcp-report"을 선택한 후에 [Connect]를 선택합니다. 여러가지 옵션 중에서 Session Manager를 선택한 후에 [connect]를 접속한 후에 console로 접속합니다. 아래 명령어를 이용하여 ec2-user에 AWS Credential을 입력합니다.
 
 ```text
 sudo runuser -l ec2-user -c 'aws configure'
