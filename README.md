@@ -460,13 +460,13 @@ source venv/bin/activate
 3) 소스를 다운로드 합니다.
 
 ```python
-git clone https://github.com/kyopark2014/mcp-agent
+git clone https://github.com/kyopark2014/mcp-report
 ```
 
 4) 이후 다운로드 받은 github 폴더로 이동한 후에 아래와 같이 필요한 패키지를 추가로 설치 합니다.
 
 ```text
-cd mcp-agent && python -m pip install -r requirements.txt
+cd mcp-report && python -m pip install -r requirements.txt
 ```
 
 5) [실습에 필요한 Key 설정](https://github.com/kyopark2014/mcp-agent/blob/main/mcp.md#%EC%8B%A4%EC%8A%B5%EC%97%90-%ED%95%84%EC%9A%94%ED%95%9C-key-%EC%84%A4%EC%A0%95)에 따라서, 인터넷과 날씨조회 API에 대한 key를 설정합니다. 설정이 되면, application/config.json을 아래와 같은 json 파일이 생성됩니다.
@@ -507,7 +507,7 @@ cp Dockerfile_x86 Dockerfile
 이제 아래와 같이 실행합니다. 아래에서는 편의상 docker의 포트를 8502로 설정하였는데 자신의 환경에 따라 설정할 수 있습니다.
 
 ```text
-docker run -p 8502:8501 mcp-agent
+docker run -p 8502:8501 mcp-report
 ```
 
 브라우저에서 아래 URL로 접속합니다. 
