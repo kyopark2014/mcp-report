@@ -27,18 +27,10 @@ ARG AWS_SECRET_ACCESS_KEY
 ARG AWS_DEFAULT_REGION
 
 # Create AWS credentials file
-RUN echo "[default]" > /root/.aws/credentials && \
-    echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID:-$(aws configure get aws_access_key_id)}" >> /root/.aws/credentials && \
-    echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}" >> /root/.aws/credentials && \
-    echo "region = ${AWS_DEFAULT_REGION:-$(aws configure get region)}" >> /root/.aws/credentials
-
-RUN echo ${AWS_ACCESS_KEY_ID}
-RUN echo ${AWS_SECRET_ACCESS_KEY}
-RUN echo ${AWS_DEFAULT_REGION}
-
-RUN echo $(aws configure get aws_access_key_id)
-RUN echo $(aws configure get aws_secret_access_key)
-RUN echo $(aws configure get region)
+RUN mkdir -p /root/.aws && \
+    aws configure set aws_access_key_id ${AWS_ACCESS_KEY_ID:-$(aws configure get aws_access_key_id)} && \
+    aws configure set aws_secret_access_key ${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)} && \
+    aws configure set region ${AWS_DEFAULT_REGION:-$(aws configure get region)}
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
