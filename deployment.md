@@ -123,6 +123,7 @@ sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 
 ```text
 sudo runuser -l ec2-user -c "cd mcp-report && docker build -t streamlit-app ."
+sudo runuser -l ec2-user -c "cd mcp-report&&./build.sh"
 ```
 
 9) 아래와 같이 streamlit을 실행합니다.
