@@ -742,7 +742,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       `runuser -l ec2-user -c 'docker run -d -p 8501:8501 streamlit-app'`
     ];
     userData.addCommands(...commands);
-    /*
+    
     // EC2 instance
     const appInstance = new ec2.Instance(this, `app-for-${projectName}`, {
       instanceName: `app-for-${projectName}`,
@@ -798,6 +798,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     })
     listener.addAction(`RedirectHttpListener-for-${projectName}`, {
       action: defaultAction
-    });   */
+    });   
   }
 }
