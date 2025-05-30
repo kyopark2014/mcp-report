@@ -269,7 +269,7 @@ sudo runuser -l ec2-user -c "/home/ec2-user/.local/bin/streamlit run /home/ec2-u
 이때, ec2-user의 github 코드를 업데이트하는 명령어는 아래와 같습니다.
 
 ```text
-sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-rag && git pull'
+sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 ```
 
 ### Streamlit 관련 중요한 명령어들
