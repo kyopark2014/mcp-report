@@ -113,13 +113,36 @@ AWS Credential을 입력합니다.
 
 ![noname](https://github.com/user-attachments/assets/bd372ce9-9e9b-403c-8d87-220cec1b1b90)
 
+7) 아래와 같이 code를 업데이트합니다.
 
-7) Output의 distributionDomainNameformcpreport의 URL을 이용하여 접속합니다. 처음 접속시에는 Knowledge base 생성등의 초기화를 하므로 수초에서 수십초 정도 기다릴 수 있습니다. 이때 실행된 화면은 아래와 같습니다.
+```text
+sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
+```
+
+8) 아래와 같이 docker 이미지를 빌드합니다.
+
+```text
+sudo runuser -l ec2-user -c "cd mcp && docker build -t streamlit-app ."
+```
+
+9) 아래와 같이 streamlit을 실행합니다.
+   
+```text
+sudo runuser -l ec2-user -c 'docker run -d -p 8501:8501 streamlit-app'
+```
+
+만약 console에서 debugging을 하고자 할 경우에는 아래와 같이 실행합니다.
+
+```text
+sudo runuser -l ec2-user -c 'docker run -p 8501:8501 streamlit-app'
+```
+
+10) Output의 distributionDomainNameformcpreport의 URL을 이용하여 접속합니다. 처음 접속시에는 Knowledge base 생성등의 초기화를 하므로 수초에서 수십초 정도 기다릴 수 있습니다. 이때 실행된 화면은 아래와 같습니다.
 
 ![image](https://github.com/user-attachments/assets/82112d2a-a18e-40b6-b683-56d3513aa00c)
 
 
-### EC2에 배포하기
+### EC2에 업데이트 하기
 
 EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이때 설치는 ec2-user로 진행되었으므로 아래와 같이 code를 업데이트합니다.
 
@@ -127,7 +150,7 @@ EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이때 
 sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 ```
 
-이제 아래와 같이 docker를 빌드합니다.
+이제 아래와 같이 docker를 다시 빌드합니다.
 
 ```text
 sudo runuser -l ec2-user -c "cd mcp && docker build -t streamlit-app ."
