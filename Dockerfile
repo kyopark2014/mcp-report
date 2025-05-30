@@ -31,7 +31,6 @@ RUN echo "[default]" > /root/.aws/credentials && \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir streamlit
 
 RUN mkdir -p /root/.streamlit
 COPY config.toml /root/.streamlit/config.toml
