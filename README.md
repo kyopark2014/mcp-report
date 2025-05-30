@@ -521,7 +521,7 @@ http://0.0.0.0:8502
 EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이후 아래와 같이 EC2를 위한 Dockerfile로 바꿉니다.
 
 ```text
-sudo runuser -l ec2-user -c "cp Dockerfile_x86 Dockerfile"
+sudo runuser -l ec2-user -c "cd mcp-report&&cp Dockerfile_x86 Dockerfile"
 ```
 
 ec2-user로 설치가 진행되었으므로 아래와 같이 code를 업데이트합니다.
