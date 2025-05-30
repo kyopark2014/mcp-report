@@ -54,12 +54,20 @@ git clone https://github.com/kyopark2014/mcp-report
 2) cdk 폴더로 이동하여 필요한 라이브러리를 설치합니다.
 
 ```java
-cd mcp/cdk-mcp-rag/ && npm install
+cd mcp-report/cdk-mcp-report/ && npm install
 ```
 
 3) CDK 사용을 위해 Boostraping을 수행합니다.
 
-아래 명령어로 Account ID를 확인합니다.
+AWS Credential을 가지고 있다면, AWS CLI를 설치합니다. 만약 Workshop을 이용한다면 export로 시작하는 AWS CLI credentials을 복사하여 터미널에서 실행합니다.
+
+```text
+curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+unzip awscliv2.zip
+sudo ./aws/install
+```
+
+Account ID를 확인합니다. Workshop을 이용할 경우에는 AWS Console의 오른쪽 메뉴에서 Account ID를 이용하고, AWS CLI가 설치된 경우에는 아래 명령어를 이용합니다.
 
 ```java
 aws sts get-caller-identity --query Account --output text
@@ -71,13 +79,7 @@ aws sts get-caller-identity --query Account --output text
 cdk bootstrap aws://[account-id]/us-west-2
 ```
 
-만약 AWS CLI가 설치가 안되어 있다면, 아래 명령어로 설치합니다.
 
-```text
-curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-unzip awscliv2.zip
-sudo ./aws/install
-```
 
 4) 아래 명령어로 인프라를 설치합니다.
 
@@ -95,13 +97,13 @@ cdk deploy --require-approval never --all
 검색, 날씨, 로그 분석을 위해 외부와 같은 API에 대한 credential을 발급받아서 입력합니다. 
 
 - 일반 검색을 위하여 [Tavily Search](https://app.tavily.com/sign-in)에 접속하여 가입 후 API Key를 발급합니다. 이것은 tvly-로 시작합니다.  
-- 날씨 검색을 위하여 [openweathermap](https://home.openweathermap.org/api_keys)에 접속하여 API Key를 발급합니다.
+- 날씨 검색을 위하여 [openweathermap](https://home.openweathermap.org/api_keys)에 접속하여 무료 API Key를 발급합니다.
 - [langsmith.md](https://github.com/kyopark2014/langgraph-agent/blob/main/langsmith.md)를 참조하여 [LangSmith](https://www.langchain.com/langsmith)에 가입후 API Key를 발급 받습니다.
 
-[Secret manager](https://us-west-2.console.aws.amazon.com/secretsmanager/listsecrets?region=us-west-2)에 접속하여, [openweathermap-bedrock-agent](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=openweathermap-bedrock-agent&region=us-west-2), [tavilyapikey-bedrock-agent](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=tavilyapikey-bedrock-agent&region=us-west-2), [langsmithapikey-bedrock-agent](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=langsmithapikey-bedrock-agent&region=us-west-2)에 접속하여, [Retrieve secret value]를 선택 후, api key를 입력합니다.
+[Secret manager](https://us-west-2.console.aws.amazon.com/secretsmanager/listsecrets?region=us-west-2)에 접속하여, [openweathermap-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=openweathermap-mcp-report&region=us-west-2), [tavilyapikey-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=tavilyapikey-mcp-report&region=us-west-2), [langsmithapikey-mcp-report](https://us-west-2.console.aws.amazon.com/secretsmanager/secret?name=langsmithapikey-mcp-report&region=us-west-2)에 접속하여, [Retrieve secret value]를 선택 후, api key를 입력합니다.
 
 
-6) 만약 Streamlit에서 AWS Credential이 필요하다면, [Console-EC2](https://us-west-2.console.aws.amazon.com/ec2/home?region=us-west-2#Instances:instanceState=running)에서 "app-for-mcp-rag"을 선택한 후에 [Connect]를 선택합니다. 여러가지 옵션 중에서 Session Manager를 선택한 후에 [connect]를 접속한 후에 console로 접속합니다. 아래 명령어를 이용하여 ec2-user에 AWS Credential을 입력합니다.
+6) 만약 Streamlit에서 AWS Credential이 필요하다면, [Console-EC2](https://us-west-2.console.aws.amazon.com/ec2/home?region=us-west-2#Instances:instanceState=running)에서 "app-for-mcp-report"을 선택한 후에 [Connect]를 선택합니다. 여러가지 옵션 중에서 Session Manager를 선택한 후에 [connect]를 접속한 후에 console로 접속합니다. 아래 명령어를 이용하여 ec2-user에 AWS Credential을 입력합니다.
 
 ```text
 sudo runuser -l ec2-user -c 'aws configure'
@@ -112,7 +114,7 @@ AWS Credential을 입력합니다.
 ![noname](https://github.com/user-attachments/assets/bd372ce9-9e9b-403c-8d87-220cec1b1b90)
 
 
-7) Output의 distributionDomainNameforbedrockagent의 URL을 이용하여 접속합니다. 처음 접속시에는 Knowledge base 생성등의 초기화를 하므로 수초에서 수십초 정도 기다릴 수 있습니다. 이때 실행된 화면은 아래와 같습니다.
+7) Output의 distributionDomainNameformcpreport의 URL을 이용하여 접속합니다. 처음 접속시에는 Knowledge base 생성등의 초기화를 하므로 수초에서 수십초 정도 기다릴 수 있습니다. 이때 실행된 화면은 아래와 같습니다.
 
 ![image](https://github.com/user-attachments/assets/82112d2a-a18e-40b6-b683-56d3513aa00c)
 
@@ -180,8 +182,8 @@ cat << EOF > /tmp/config.json
              "collect_list":[
                 {
                    "file_path":"/var/log/application/logs.log",
-                   "log_group_name":"mcp-rag.log",
-                   "log_stream_name":"mcp-rag.log",
+                   "log_group_name":"mcp-report.log",
+                   "log_stream_name":"mcp-report.log",
                    "timezone":"UTC"
                 }
              ]
@@ -219,31 +221,6 @@ cat /opt/aws/amazon-cloudwatch-agent/logs/amazon-cloudwatch-agent.log
 sudo yum install amazon-cloudwatch-agent
 ```
 
-### Local에서 실행하기 
-
-Output의 environmentforbedrockagent의 내용을 복사하여 [config.json](./application/config.json)을 업데이트 합니다. 이미 "aws configure"가 설정되어 있어야합니다.
-
-만약 visual studio code 사용자라면 config.json 파일은 아래 명령어를 사용합니다.
-
-```text
-code application/config.json
-```
-
-아래와 같이 필요한 패키지를 설치합니다.
-
-```text
-python3 -m venv venv
-source venv/bin/activate
-pip install streamlit streamlit_chat 
-pip install boto3 langchain_aws langchain langchain_community langgraph opensearch-py
-pip install beautifulsoup4 pytz tavily-python
-```
-
-아래와 같은 명령어로 streamlit을 실행합니다. 
-
-```text
-streamlit run application/app.py
-```
 
 ### EC2에서 로그를 보면서 실행하기
 
@@ -298,7 +275,7 @@ After=network-online.target
 User=ec2-user
 Group=ec2-user
 Restart=always
-ExecStart=/home/ec2-user/.local/bin/streamlit run /home/ec2-user/mcp-rag/application/app.py
+ExecStart=/home/ec2-user/.local/bin/streamlit run /home/ec2-user/mcp-report/application/app.py
 
 [Install]
 WantedBy=multi-user.target
