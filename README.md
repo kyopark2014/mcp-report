@@ -446,7 +446,7 @@ def revise_draft(draft, context):
     return result.content
 ```
 
-### Local에서 실행하기 (MAC)
+### Local에서 실행하기
 
 1) 필수는 아니지만 정상적인 진행을 위해서는 AWS CLI가 필요합니다. [최신 버전의 AWS CLI 설치 또는 업데이트](https://docs.aws.amazon.com/ko_kr/cli/latest/userguide/getting-started-install.html)에 따라 설치후 "aws configure" 명령으로 AWS credential을 등록합니다.
 
@@ -486,10 +486,16 @@ streamlit run application/app.py
 
 ### Local에서 Docker로 실행하기
 
-아래와 같이 docker를 설치하고 실행합니다.
+아래와 같이 docker를 설치하고 실행합니다. 아래는 Mac의 예제입니다.
 
 ```text
 brew install --cask docker
+```
+
+빌드시 사용하는 Dockerfile은 Mac(ARM)입니다. Windows라면 [Dockerfile_x86](./Dockerfile_x86)을 아래와 같이 사용합니다.
+
+```text
+cp Dockerfile_x86 Dockerfile
 ```
 
 이제 아래와 같이 스크립트를 이용해 빌드합니다. [build.sh](./build.sh)는 aws credential을 조회해서 build 할때에 포함합니다.
@@ -512,7 +518,13 @@ http://0.0.0.0:8502
 
 ### EC2에서 업데이트 후 실행하기
 
-EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이때 설치는 ec2-user로 진행되었으므로 아래와 같이 code를 업데이트합니다.
+EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이후 아래와 같이 EC2를 위한 Dockerfile로 바꿉니다.
+
+```text
+cp Dockerfile_x86 Dockerfile
+```
+
+ec2-user로 설치가 진행되었으므로 아래와 같이 code를 업데이트합니다.
 
 ```text
 sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
