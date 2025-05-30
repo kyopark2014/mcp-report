@@ -2,7 +2,7 @@
 
 ## Bedrock 사용 권한 설정하기
 
-LLM으로 Anthropic Claude, Amazon Nova을 사용하기 위하여, Amazon Bedrock의 us-west-2, us-east-1, us-east-2 리전을 사용합니다. [Model access](https://us-west-2.console.aws.amazon.com/bedrock/home?region=us-west-2#/modelaccess)에 접속해서 [Edit]를 선택하여 "Anthropic Claude", "Amazon Nova", "Titan Text Embeddings V2"의 모델들 enable 합니다.
+LLM으로 Anthropic Claude, Amazon Titan Embedding을 사용하기 위하여, Amazon Bedrock의 us-west-2, us-east-1, us-east-2 리전을 사용합니다. [Model access](https://us-west-2.console.aws.amazon.com/bedrock/home?region=us-west-2#/modelaccess)에 접속해서 [Edit]를 선택하여 "Anthropic Claude", "Titan Text Embeddings V2"의 모델들 enable 합니다.
 
 ## 설치하기
 
@@ -48,7 +48,7 @@ sudo npm install -g aws-cdk --prefix /usr/local
 1) 소스를 다운로드합니다.
 
 ```java
-git clone https://github.com/kyopark2014/mcp
+git clone https://github.com/kyopark2014/mcp-report
 ```
 
 2) cdk 폴더로 이동하여 필요한 라이브러리를 설치합니다.
@@ -71,7 +71,7 @@ aws sts get-caller-identity --query Account --output text
 cdk bootstrap aws://[account-id]/us-west-2
 ```
 
-만약 AWS CLI가 설치가 안되어서 bootstrap이 실패하는 경우에는 아래 명령어로 설치합니다.
+만약 AWS CLI가 설치가 안되어 있다면, 아래 명령어로 설치합니다.
 
 ```text
 curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
@@ -84,6 +84,7 @@ sudo ./aws/install
 ```java
 cdk deploy --require-approval never --all
 ```
+
 인프라가 설치가 되면 아래와 같은 Output을 확인할 수 있습니다. 
 
 ![image](https://github.com/user-attachments/assets/05a74dcb-89ea-4e7e-9f6c-d58799c26d6f)
