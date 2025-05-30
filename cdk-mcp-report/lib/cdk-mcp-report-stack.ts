@@ -721,7 +721,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       description: `environment-${projectName}`,
       exportName: `environment-${projectName}`
     });
-/*
+
     const commands = [
       'yum install git python-pip docker -y',
       'pip install pip --upgrade',
@@ -798,6 +798,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     })
     listener.addAction(`RedirectHttpListener-for-${projectName}`, {
       action: defaultAction
-    });   */
+    });   
   }
 }
