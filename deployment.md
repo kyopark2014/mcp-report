@@ -154,7 +154,7 @@ sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 이제 아래와 같이 docker를 다시 빌드합니다.
 
 ```text
-sudo runuser -l ec2-user -c "cd mcp && docker build -t streamlit-app ."
+sudo runuser -l ec2-user -c "cd mcp-report && docker build -t streamlit-app ."
 ```
 
 빌드가 완료되면 "sudo docker ps"로 docker id를 확인후에 "sudo docker kill" 명령어로 종료합니다.
