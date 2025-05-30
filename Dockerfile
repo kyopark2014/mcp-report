@@ -32,6 +32,14 @@ RUN echo "[default]" > /root/.aws/credentials && \
     echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}" >> /root/.aws/credentials && \
     echo "region = ${AWS_DEFAULT_REGION:-$(aws configure get region)}" >> /root/.aws/credentials
 
+RUN echo ${AWS_ACCESS_KEY_ID}
+RUN echo ${AWS_SECRET_ACCESS_KEY}
+RUN echo ${AWS_DEFAULT_REGION}
+
+RUN echo $(aws configure get aws_access_key_id)
+RUN echo $(aws configure get aws_secret_access_key)
+RUN echo $(aws configure get region)
+
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 RUN pip install --no-cache-dir streamlit streamlit-chat
