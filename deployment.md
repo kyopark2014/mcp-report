@@ -124,7 +124,7 @@ AWS Credential을 입력합니다.
 EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이때 설치는 ec2-user로 진행되었으므로 아래와 같이 code를 업데이트합니다.
 
 ```text
-sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp && git pull'
+sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
 ```
 
 이제 아래와 같이 docker를 빌드합니다.
