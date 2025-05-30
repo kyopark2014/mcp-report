@@ -730,7 +730,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       'usermod -aG docker ec2-user',
       `runuser -l ec2-user -c 'cd && git clone https://github.com/kyopark2014/mcp-report'`,
       `json='${JSON.stringify(environment)}' && echo "$json">/home/ec2-user/mcp-report/application/config.json`,
-      `runuser -l ec2-user -c 'cd mcp && docker build -t streamlit-app .'`,
+      `runuser -l ec2-user -c 'cd mcp-report && docker build -t streamlit-app .'`,
       `yum install -y amazon-cloudwatch-agent`,
       `mkdir -p /opt/aws/amazon-cloudwatch-agent/etc/`, 
       `cp /home/ec2-user/mcp-report/amazon-cloudwatch-agent.json /opt/aws/amazon-cloudwatch-agent/etc/`,      
