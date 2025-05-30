@@ -85,7 +85,7 @@ with st.sidebar:
         "여기에서는 MCP를 이용해 RAG를 구현하고, Multi agent를 이용해 다양한 기능을 구현할 수 있습니다." 
         "또한 번역이나 문법 확인과 같은 용도로 사용할 수 있습니다."
         "주요 코드는 LangChain과 LangGraph를 이용해 구현되었습니다.\n"
-        "상세한 코드는 [Github](https://github.com/kyopark2014/mcp)을 참조하세요."
+        "상세한 코드는 [Github](https://github.com/kyopark2014/mcp-report)을 참조하세요."
     )
 
     st.subheader("🐱 대화 형태")
