@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y \
     python3-dev \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
-    && pip install --no-cache-dir awscli \
+    && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
+    && unzip awscliv2.zip \
+    && ./aws/install \
+    && rm -rf aws awscliv2.zip \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
