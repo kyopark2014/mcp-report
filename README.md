@@ -510,6 +510,36 @@ docker run -p 8502:8501 mcp-agent
 http://0.0.0.0:8502
 ```
 
+### EC2에서 업데이트 후 실행하기
+
+EC2가 private subnet에 있으므로 Session Manger로 접속합니다. 이때 설치는 ec2-user로 진행되었으므로 아래와 같이 code를 업데이트합니다.
+
+```text
+sudo runuser -l ec2-user -c 'cd /home/ec2-user/mcp-report && git pull'
+```
+
+이제 아래와 같이 docker를 빌드합니다.
+
+```text
+sudo runuser -l ec2-user -c "cd mcp-report && docker build -t streamlit-app ."
+```
+
+빌드가 완료되면 "sudo docker ps"로 docker id를 확인후에 "sudo docker kill" 명령어로 종료합니다.
+
+![noname](https://github.com/user-attachments/assets/4afb2af8-d092-4aaa-813a-65975375f7d4)
+
+이후 아래와 같이 다시 실행합니다.
+
+```text
+sudo runuser -l ec2-user -c 'docker run -d -p 8501:8501 streamlit-app'
+```
+
+만약 console에서 debugging할 경우에는 -d 옵션없이 아래와 같이 실행합니다.
+
+```text
+sudo runuser -l ec2-user -c 'docker run -p 8501:8501 streamlit-app'
+```
+
 
 
 
