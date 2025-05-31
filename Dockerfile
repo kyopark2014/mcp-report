@@ -11,6 +11,7 @@ RUN apt-get update && apt-get install -y \
     graphviz-dev \
     pkg-config \
     terminator \
+    wget \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Node.js
@@ -32,6 +33,30 @@ WORKDIR /app
 
 # Create AWS credentials directory
 RUN mkdir -p /root/.aws
+
+# Install Chrome and Playwright dependencies
+RUN apt-get update && apt-get install -y \
+    libnss3 \
+    libnspr4 \
+    libatk1.0-0 \
+    libatk-bridge2.0-0 \
+    libcups2 \
+    libdrm2 \
+    libxkbcommon0 \
+    libxcomposite1 \
+    libxdamage1 \
+    libxfixes3 \
+    libxrandr2 \
+    libgbm1 \
+    libasound2 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Chrome
+RUN wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add - \
+    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google.list \
+    && apt-get update \
+    && apt-get install -y google-chrome-stable \
+    && rm -rf /var/lib/apt/lists/*
 
 # COPY requirements.txt .
 # RUN pip install --no-cache-dir -r requirements.txt
@@ -55,7 +80,7 @@ EXPOSE 8501
 
 RUN npm install -g playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium
+RUN npx playwright install --with-deps chromium chrome
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
 
