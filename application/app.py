@@ -10,6 +10,7 @@ import aws_cost.implementation
 import random
 import string
 import os
+import pwd
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
