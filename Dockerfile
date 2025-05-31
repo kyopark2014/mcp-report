@@ -11,34 +11,27 @@ RUN apt-get update && apt-get install -y \
     graphviz-dev \
     pkg-config \
     terminator \
-    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get update \
     && apt-get install -y nodejs \
-    && npm install -g npm@latest \
-    && npm install -g playwright \
-    && npx playwright install chrome \
-    # && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
-    && curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install npm and Playwright
+RUN npm install -g npm@latest 
+
+# Install AWS CLI
+RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
-    && rm -rf aws awscliv2.zip \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*    
+    && rm -rf aws awscliv2.zip
  
 WORKDIR /app
 
 # Create AWS credentials directory
 RUN mkdir -p /root/.aws
-
-# Set ARG for AWS credentials
-ARG AWS_ACCESS_KEY_ID
-ARG AWS_SECRET_ACCESS_KEY
-ARG AWS_DEFAULT_REGION
-
-# Create AWS credentials file
-RUN echo "[default]" > /root/.aws/credentials && \
-    echo "aws_access_key_id = ${AWS_ACCESS_KEY_ID:-$(aws configure get aws_access_key_id)}" >> /root/.aws/credentials && \
-    echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}" >> /root/.aws/credentials && \
-    echo "region = ${AWS_DEFAULT_REGION:-$(aws configure get region)}" >> /root/.aws/credentials
 
 # COPY requirements.txt .
 # RUN pip install --no-cache-dir -r requirements.txt
@@ -59,6 +52,10 @@ COPY config.toml /root/.streamlit/
 COPY . .
 
 EXPOSE 8501
+
+RUN npm install -g playwright
+ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
+RUN npx playwright install --with-deps chromium
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
 
