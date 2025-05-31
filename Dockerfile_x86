@@ -10,14 +10,18 @@ RUN apt-get update && apt-get install -y \
     graphviz \
     graphviz-dev \
     pkg-config \
+    terminator \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
     && apt-get install -y nodejs \
+    && npm install -g npm@latest \
+    && npm install -g playwright \
+    && npx playwright install chrome \
     && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
     && rm -rf aws awscliv2.zip \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/*    
 
 WORKDIR /app
 
@@ -36,17 +40,14 @@ RUN echo "[default]" > /root/.aws/credentials && \
     echo "region = ${AWS_DEFAULT_REGION:-$(aws configure get region)}" >> /root/.aws/credentials
 
 COPY requirements.txt .
+RUN pip install --no-cache-dir sarif-om==1.0.4
+RUN pip install --no-cache-dir diagrams
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir sarif-om==1.0.4 diagrams
 
 RUN mkdir -p /root/.streamlit
-COPY config.toml /root/.streamlit/config.toml
+COPY config.toml /root/.streamlit
 
 COPY . .
-
-RUN npm install -g playwright
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium
 
 EXPOSE 8501
 
