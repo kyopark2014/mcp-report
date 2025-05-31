@@ -7,8 +7,11 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     gcc \
     python3-dev \
+    graphviz \
+    graphviz-dev \
+    pkg-config \
+    && apt-get install -y nodejs \    
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
-    && apt-get install -y nodejs \
     && curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
@@ -34,7 +37,7 @@ RUN echo "[default]" > /root/.aws/credentials && \
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir streamlit streamlit-chat
+RUN pip install --no-cache-dir sarif-om==1.0.4 diagrams
 
 RUN mkdir -p /root/.streamlit
 COPY config.toml /root/.streamlit/config.toml
