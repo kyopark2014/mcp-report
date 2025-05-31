@@ -699,7 +699,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       environment: {
         bedrock_region: String(region),
         projectName: projectName,
-        "docs_url": 'https://'+distribution.domainName+'/docs',
+        "sharing_url": 'https://'+distribution.domainName,
       }
     });     
     
