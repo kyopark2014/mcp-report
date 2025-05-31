@@ -10,15 +10,20 @@ RUN apt-get update && apt-get install -y \
     graphviz \
     graphviz-dev \
     pkg-config \
-    && apt-get install -y nodejs \    
+    terminator \
     && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y nodejs \
+    && npm install -g npm@latest \
+    && npm install -g playwright \
+    && npx playwright install chrome \
+    # && curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip" \
     && curl "https://awscli.amazonaws.com/awscli-exe-linux-aarch64.zip" -o "awscliv2.zip" \
     && unzip awscliv2.zip \
     && ./aws/install \
     && rm -rf aws awscliv2.zip \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
-
+    && rm -rf /var/lib/apt/lists/*    
+ 
 WORKDIR /app
 
 # Create AWS credentials directory
@@ -35,18 +40,23 @@ RUN echo "[default]" > /root/.aws/credentials && \
     echo "aws_secret_access_key = ${AWS_SECRET_ACCESS_KEY:-$(aws configure get aws_secret_access_key)}" >> /root/.aws/credentials && \
     echo "region = ${AWS_DEFAULT_REGION:-$(aws configure get region)}" >> /root/.aws/credentials
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-RUN pip install --no-cache-dir sarif-om==1.0.4 diagrams
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install streamlit==1.41.0 streamlit-chat pandas numpy boto3
+RUN pip install langchain_aws langchain langchain_community langgraph langchain_experimental
+RUN pip install langgraph-supervisor langgraph-swarm
+RUN pip install tavily-python==0.5.0 yfinance==0.2.52 rizaio==0.8.0 pytz==2024.2 beautifulsoup4==4.12.3
+RUN pip install plotly_express==0.4.1 matplotlib==3.10.0
+RUN pip install PyPDF2==3.0.1 opensearch-py
+RUN pip install mcp langchain-mcp-adapters==0.0.9 wikipedia
+RUN pip install aioboto3 requests uv kaleido diagrams
+RUN pip install graphviz sarif-om==1.0.4
 
 RUN mkdir -p /root/.streamlit
-COPY config.toml /root/.streamlit/config.toml
+COPY config.toml /root/.streamlit/
 
 COPY . .
-
-RUN npm install -g playwright
-ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium
 
 EXPOSE 8501
 
