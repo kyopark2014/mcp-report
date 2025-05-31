@@ -1466,10 +1466,25 @@ def retrieve_knowledge_base(query):
 
     return payload['response']
 
-def run_rag_with_knowledge_base(query, st):
-    global reference_docs, contentList
+def get_reference_docs(docs):    
     reference_docs = []
-    contentList = []
+    for doc in docs:
+        reference = doc.get("reference")
+        reference_docs.append(
+            Document(
+                page_content=doc.get("contents"),
+                metadata={
+                    'name': reference.get("title"),
+                    'url': reference.get("url"),
+                    'from': reference.get("from")
+                },
+            )
+    )     
+    return reference_docs
+
+def run_rag_with_knowledge_base(query, st):
+    global reference_docs
+    reference_docs = []
 
     # retrieve
     if debug_mode == "Enable":
@@ -1477,8 +1492,10 @@ def run_rag_with_knowledge_base(query, st):
 
     relevant_context = retrieve_knowledge_base(query)    
     logger.info(f"relevant_context: {relevant_context}")
-    st.info(f"RAG 검색을 완료했습니다.")
-    st.info(f"{relevant_context}")
+    
+    # change format to document
+    reference_docs = get_reference_docs(json.loads(relevant_context))
+    st.info(f"{len(reference_docs)}개의 관련된 문서를 얻었습니다.")
 
     rag_chain = get_rag_prompt(query)
                        
@@ -1494,12 +1511,20 @@ def run_rag_with_knowledge_base(query, st):
 
         msg = result.content        
         if msg.find('<result>')!=-1:
-            msg = msg[msg.find('<result>')+8:msg.find('</result>')]
-        
+            msg = msg[msg.find('<result>')+8:msg.find('</result>')]        
+               
     except Exception:
         err_msg = traceback.format_exc()
         logger.info(f"error message: {err_msg}")                    
         raise Exception ("Not able to request to LLM")
+    
+    if reference_docs:
+        logger.info(f"reference_docs: {reference_docs}")
+        ref = "\n\n### Reference\n"
+        for i, reference in enumerate(reference_docs):
+            ref += f"{i+1}. [{reference.metadata['name']}]({reference.metadata['url']}), {reference.page_content[:100]}...\n"    
+        logger.info(f"ref: {ref}")
+        msg += ref
     
     return msg, reference_docs
    
