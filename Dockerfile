@@ -80,7 +80,7 @@ EXPOSE 8501
 
 RUN npm install -g playwright
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
-RUN npx playwright install --with-deps chromium chrome
+RUN npx playwright install --with-deps chromium && npx playwright install --force chrome
 
 HEALTHCHECK CMD curl --fail http://localhost:8501/_stcore/health
 
