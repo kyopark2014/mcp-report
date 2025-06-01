@@ -410,8 +410,12 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                 # request id
                 request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
                 logger.info(f"request_id: {request_id}")
+
+                status_container = st.empty()            
+                response_container = st.empty()
+                key_container = st.empty()
                 
-                response = aws_cost.implementation.run(request_id)
+                response = aws_cost.implementation.run(request_id, status_container, response_container, key_container)
 
                 st.write(response)
 

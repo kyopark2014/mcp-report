@@ -30,7 +30,8 @@ import chat
 import os
 import json
 import traceback
-import utils
+import asyncio
+import aws_cost.reflection_agent as reflection_agent
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -151,7 +152,7 @@ class CostState(TypedDict):
     appendix: list[str]
     iteration: int
     reflection: list[str]
-    final_response: str    
+    final_response: str
 
 # Define stand-alone functions
 status_msg = []
@@ -533,19 +534,31 @@ def mcp_tools(state: CostState, config) -> dict:
 
     status_container = config.get("configurable", {}).get("status_container", None)
     response_container = config.get("configurable", {}).get("response_container", None)
-    
+    key_container = config.get("configurable", {}).get("key_container", None)
+
+    appendix = state["appendix"] if "appendix" in state else []
+
     if status_container:
         status_container.info(get_status_msg("mcp_tools"))
 
-    reflection_result = chat.run_reflection_agent(draft, state["reflection"])
+    reflection_result, image_url = asyncio.run(reflection_agent.run(draft, state["reflection"], status_container, response_container, key_container))
     logger.info(f"reflection result: {reflection_result}")
 
+    value = ""
+    if image_url:
+        for url in image_url:
+            value += f"![image]({url})\n\n"
+    if value:
+        logger.info(f"value: {value}")
+        appendix.append(value)
+    
     # logging in step.md
     request_id = config.get("configurable", {}).get("request_id", "")
     key = f"artifacts/{request_id}_steps.md"
     time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
     body = f"{reflection_result}\n\n"
-    chat.updata_object(key, time + body, 'append')
+    value = '\n\n'.join(appendix)
+    chat.updata_object(key, time + body + value, 'append')
 
     if response_container:
         value = body
@@ -586,7 +599,7 @@ agent = CostAgent(
 
 cost_agent = agent.compile()
 
-def run(request_id: str, status_container=None, response_container=None):
+def run(request_id: str, status_container=None, response_container=None, key_container=None):
     logger.info(f"request_id: {request_id}")
 
     global status_msg
@@ -595,8 +608,7 @@ def run(request_id: str, status_container=None, response_container=None):
     # add plan to report
     key = f"artifacts/{request_id}_plan.md"
     
-    if status_container:
-        status_container.info(get_status_msg("start"))
+    status_container.info(get_status_msg("start"))
     
     # draw a graph
     graph_diagram = cost_agent.get_graph().draw_mermaid_png(
@@ -624,7 +636,8 @@ def run(request_id: str, status_container=None, response_container=None):
         "recursion_limit": 50,
         "max_iteration": 1,
         "status_container": status_container,
-        "response_container": response_container
+        "response_container": response_container,
+        "key_container": key_container
     }
 
     value = None

@@ -31,9 +31,6 @@ RUN curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2
  
 WORKDIR /app
 
-# Create AWS credentials directory
-RUN mkdir -p /root/.aws
-
 # Install Chrome and Playwright dependencies
 RUN apt-get update && apt-get install -y \
     libnss3 \

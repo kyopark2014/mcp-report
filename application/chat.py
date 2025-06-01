@@ -1683,7 +1683,7 @@ def create_agent(tools, historyMode):
 #   args=["application/mcp-server.py"],
 # )
 
-def load_mcp_server_parameters(mcp_json):
+def load_mcp_server_parameters():
     logger.info(f"mcp_json: {mcp_json}")
 
     mcpServers = mcp_json.get("mcpServers")
@@ -1713,7 +1713,7 @@ def load_mcp_server_parameters(mcp_json):
         env=env
     )
 
-def load_multiple_mcp_server_parameters(mcp_json):
+def load_multiple_mcp_server_parameters():
     logger.info(f"mcp_json: {mcp_json}")
 
     mcpServers = mcp_json.get("mcpServers")
@@ -1868,8 +1868,8 @@ def extract_reference(response):
                 pass
     return references
 
-async def mcp_agent_multiple(query, mcp_json, historyMode, st):
-    server_params = load_multiple_mcp_server_parameters(mcp_json)
+async def mcp_agent_multiple(query, historyMode, st):
+    server_params = load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
     async with MultiServerMCPClient(server_params) as client:
@@ -1981,190 +1981,9 @@ async def mcp_rag_agent_single(query, mcp_json, historyMode, st):
             return result
 
 def run_agent(query, historyMode, st):
-    global mcp_json
-    logger.info(f"mcp_json: {mcp_json}")
-
-    result = asyncio.run(mcp_agent_multiple(query, mcp_json, historyMode, st))
+    result = asyncio.run(mcp_agent_multiple(query, historyMode, st))
     #result = asyncio.run(mcp_rag_agent_single(query, historyMode, st))
 
     logger.info(f"result: {result}")
-    
-    return result
-
-####################### Agent #######################
-# Reflection Agent 
-#####################################################
-def create_reflection_agent(tools, draft):
-    tool_node = ToolNode(tools)
-
-    chatModel = get_chat(extended_thinking="Disable")
-    model = chatModel.bind_tools(tools)
-
-    class State(TypedDict):
-        messages: Annotated[list, add_messages]
-        image_url: list
-        research: list
-
-    def call_model(state: State, config):
-        logger.info(f"###### call_model ######")
-        # logger.info(f"state: {state['messages']}")
-
-        last_message = state['messages'][-1].content
-        logger.info(f"last_message: {last_message[:500]}")
-        
-        # get image_url from state
-        image_url = state['image_url'] if 'image_url' in state else []
-        if isinstance(last_message, str) and (last_message.strip().startswith('{') or last_message.strip().startswith('[')):
-            try:                 
-                tool_result = json.loads(last_message)
-                if "path" in tool_result:
-                    logger.info(f"path: {tool_result['path']}")
-
-                    path = tool_result['path']
-                    if isinstance(path, list):
-                        for p in path:
-                            logger.info(f"image: {p}")
-                            if p.startswith('http') or p.startswith('https'):
-                                image_url.append(p)
-                    else:
-                        logger.info(f"image: {path}")
-                        if path.startswith('http') or path.startswith('https'):
-                            image_url.append(path)
-            except json.JSONDecodeError:
-                tool_result = last_message
-        if image_url:
-            logger.info(f"image_url: {image_url}")
-
-        system = (
-            "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
-            "다음의 draft를 개선하기 위하여 조사를 수행하세요."
-            "<draft>{draft}</draft>"
-        )
-
-        try:
-            prompt = ChatPromptTemplate.from_messages(
-                [
-                    ("system", system),
-                    MessagesPlaceholder(variable_name="messages"),
-                ]
-            )
-            chain = prompt | model
-                
-            response = chain.invoke({
-                "messages": state["messages"],
-                "draft": draft
-            })
-            # logger.info(f"call_model: {response.content}")
-
-        except Exception:
-            response = AIMessage(content="답변을 찾지 못하였습니다.")
-
-            err_msg = traceback.format_exc()
-            logger.info(f"error message: {err_msg}")
-            # raise Exception ("Not able to request to LLM")
-
-        return {"messages": [response], "image_url": image_url}
-
-    def should_continue(state: State) -> Literal["continue", "end"]:
-        logger.info(f"###### should_continue ######")
-
-        messages = state["messages"]    
-        last_message = messages[-1]
-        
-        if isinstance(last_message, AIMessage) and last_message.tool_calls:
-            tool_name = last_message.tool_calls[-1]['name']
-            logger.info(f"--- CONTINUE: {tool_name} ---")
-
-            if debug_mode == "Enable":
-                status_messages(last_message)
-
-            return "continue"
-        else:
-            logger.info(f"--- END ---")
-            return "end"
-
-    def buildChatAgent():
-        workflow = StateGraph(State)
-
-        workflow.add_node("agent", call_model)
-        workflow.add_node("action", tool_node)
-        workflow.add_edge(START, "agent")
-        workflow.add_conditional_edges(
-            "agent",
-            should_continue,
-            {
-                "continue": "action",
-                "end": END,
-            },
-        )
-        workflow.add_edge("action", "agent")
-
-        return workflow.compile() 
-    
-    # workflow 
-    app = buildChatAgent()
-    config = {
-        "recursion_limit": 50
-    }
-
-    return app, config
-
-async def reflection_mcp_agent(draft, reflection):
-    global mcp_json
-    logger.info(f"mcp_json: {mcp_json}")
-    
-    server_params = load_multiple_mcp_server_parameters(mcp_json)
-    logger.info(f"server_params: {server_params}")
-
-    async with MultiServerMCPClient(server_params) as client:
-        ref = ""
-        tools = client.get_tools()
-        if debug_mode == "Enable":
-            logger.info(f"tools: {tools}")
-
-        agent, config = create_reflection_agent(tools, draft)
-
-        instraction = reflection['reflection']
-        search_queries = reflection['search_queries']
-        logger.info(f"reflection: {instraction}, search_queries: {search_queries}")
-
-        try:
-            response = await agent.ainvoke({"messages": instraction[0]}, config)
-            # logger.info(f"response: {response}")
-
-            result = response["messages"][-1].content
-            # logger.info(f"result: {result}")
-
-            debug_msgs = get_debug_messages()
-            for msg in debug_msgs:
-                # logger.info(f"msg: {msg}")
-                if "image" in msg:
-                    logger.info(f"image: {msg['image']}")
-                elif "text" in msg:
-                    logger.info(f"text: {msg['text']}")
-
-            image_url = response["image_url"] if "image_url" in response else []
-            logger.info(f"image_url: {image_url}")
-
-            for image in image_url:
-                logger.info(f"image: {image}")
-
-            # references = extract_reference(response["messages"])                
-            # if references:
-            #     ref = "\n\n### Reference\n"
-            #     for i, reference in enumerate(references):
-            #         ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
-            #     logger.info(f"ref: {ref}")
-            #     result += ref
-
-            # logger.info(f"result: {result}")
-            return result
-        except Exception as e:
-            logger.error(f"Error during agent invocation: {str(e)}")
-            raise Exception(f"Agent invocation failed: {str(e)}")
-
-def run_reflection_agent(draft, reflection):
-    result = asyncio.run(reflection_mcp_agent(draft, reflection))
-    # logger.info(f"result: {result}")
     
     return result
