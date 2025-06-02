@@ -359,6 +359,11 @@ if clear_button==False and mode == '비용 분석':
     response = aws_cost.run(request_id, status_container, response_container)
     logger.info(f"response: {response}")
 
+    if aws_cost.response_msg:
+        with st.expander(f"수행 결과"):
+            response_msgs = '\n\n'.join(aws_cost.response_msg)  
+            st.markdown(response_msgs)
+
     st.write(response)
 
     st.session_state.messages.append({"role": "assistant", "content": response})

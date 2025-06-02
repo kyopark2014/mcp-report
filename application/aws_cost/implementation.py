@@ -163,6 +163,8 @@ def get_status_msg(status):
     status = " -> ".join(status_msg)
     return "[status]\n" + status + "..."
 
+response_msg = []
+
 def service_cost(state: CostState, config) -> dict:
     logger.info(f"###### service_cost ######")
 
@@ -211,6 +213,7 @@ def service_cost(state: CostState, config) -> dict:
     if response_container:
         value = service_costs.to_string()
         response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
     
     # service cost (pie chart)
     fig_pie = px.pie(
@@ -240,6 +243,7 @@ def service_cost(state: CostState, config) -> dict:
     if response_container:
         value = summary
         response_container.info('[response]\n' + value[:200])
+        response_msg.append(value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -297,6 +301,7 @@ def region_cost(state: CostState, config) -> dict:
     if response_container:
         value = region_costs.to_string()
         response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
 
     # region cost (bar chart)
     fig_bar = px.bar(
@@ -323,7 +328,8 @@ def region_cost(state: CostState, config) -> dict:
 
     if response_container:
         value = body
-        response_container.info('[response]\n' + time + body)
+        response_container.info('[response]\n' + time + body[:200])
+        response_msg.append(time + value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -384,6 +390,7 @@ def daily_cost(state: CostState, config) -> dict:
     if response_container:
         value = daily_costs_df.to_string()
         response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
 
     # daily trend cost (line chart)
     fig_line = px.line(
@@ -413,6 +420,7 @@ def daily_cost(state: CostState, config) -> dict:
     if response_container:
         value = body
         response_container.info('[response]\n' + value[:200])
+        response_msg.append(value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -492,6 +500,7 @@ def generate_insight(state: CostState, config) -> dict:
     if response_container:
         value = response.content
         response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     iteration = state["iteration"] if "iteration" in state else 0
 
@@ -523,6 +532,7 @@ def reflect_context(state: CostState, config) -> dict:
     if response_container:
         value = body
         response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     return {
         "reflection": result
@@ -541,7 +551,8 @@ def mcp_tools(state: CostState, config) -> dict:
     if status_container:
         status_container.info(get_status_msg("mcp_tools"))
 
-    reflection_result, image_url = asyncio.run(reflection_agent.run(draft, state["reflection"], status_container, response_container, key_container))
+    global status_msg, response_msg 
+    reflection_result, image_url, status_msg, response_msg = asyncio.run(reflection_agent.run(draft, state["reflection"], status_container, response_container, key_container, status_msg, response_msg))
     logger.info(f"reflection result: {reflection_result}")
 
     value = ""
@@ -563,6 +574,7 @@ def mcp_tools(state: CostState, config) -> dict:
     if response_container:
         value = body
         response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     additional_context = state["additional_context"] if "additional_context" in state else []
     additional_context.append(reflection_result)

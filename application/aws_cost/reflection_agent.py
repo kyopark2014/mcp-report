@@ -29,7 +29,7 @@ def get_status_msg(status):
     global status_msg
     status_msg.append(status)
 
-    if status != "end":
+    if status != "end)":
         status = " -> ".join(status_msg)
         return "[status]\n" + status + "..."
     else: 
@@ -149,7 +149,7 @@ async def should_continue(state: State, config) -> Literal["continue", "end"]:
         return "continue"
     else:
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg("end"))
+            status_container.info(get_status_msg("end)"))
 
         logger.info(f"--- END ---")
         return "end"
@@ -273,10 +273,10 @@ def extract_reference(response):
                 pass
     return references
 
-async def run(draft, reflection, status_container, response_container, key_container):
+async def run(draft, reflection, status_container, response_container, key_container, previous_status_msg, previous_response_msg):
     global status_msg, response_msg
-    status_msg = []
-    response_msg = []
+    status_msg = previous_status_msg
+    response_msg = previous_response_msg
 
     server_params = chat.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
@@ -286,7 +286,8 @@ async def run(draft, reflection, status_container, response_container, key_conta
 
         if chat.debug_mode == "Enable":
             logger.info(f"tools: {tools}")
-            response_container.info(f"tools: {tools}")
+            response_container.info(f"tools: {tools[:500]}")
+            response_msg.append(f"tools: {tools[:500]}")
 
         instruction = (
             f"<reflection>{reflection}</reflection>\n\n"
@@ -294,7 +295,7 @@ async def run(draft, reflection, status_container, response_container, key_conta
         )
 
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg("start"))
+            status_container.info(get_status_msg("(start"))
 
         app = buildChatAgent(tools)
         config = {
@@ -321,4 +322,4 @@ async def run(draft, reflection, status_container, response_container, key_conta
         logger.info(f"result: {result}")
         image_url = final_output["image_url"] if "image_url" in final_output else []
 
-        return result, image_url
+        return result, image_url, status_msg, response_msg
