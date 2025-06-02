@@ -6,11 +6,12 @@ import traceback
 import mcp_config as mcp_config
 import logging
 import sys
-import aws_cost.implementation
+import aws_cost.implementation as aws_cost
 import random
 import string
 import os
 import pwd
+import asyncio
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -355,7 +356,7 @@ if clear_button==False and mode == '비용 분석':
     status_container = st.empty()
     response_container = st.empty()
     
-    response = aws_cost.implementation.run(request_id, status_container, response_container)
+    response = aws_cost.run(request_id, status_container, response_container)
     logger.info(f"response: {response}")
 
     st.write(response)
@@ -395,13 +396,37 @@ if prompt := st.chat_input("메시지를 입력하세요."):
             sessionState = ""
             chat.references = []
             chat.image_url = []
-            response = chat.run_agent(prompt, "Disable", st)
+            response, image_url = asyncio.run(chat.run_agent(prompt, "Disable", st))
+
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "images": image_url if image_url else []
+            })
+
+            st.write(response)
+            for url in image_url:
+                    logger.info(f"url: {url}")
+                    file_name = url[url.rfind('/')+1:]
+                    st.image(url, caption=file_name, use_container_width=True)
 
         elif mode == 'Agent (Chat)':
             sessionState = ""
             chat.references = []
             chat.image_url = []
-            response = chat.run_agent(prompt, "Enable", st)
+            response, image_url = asyncio.run(chat.run_agent(prompt, "Enable", st))
+
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "images": image_url if image_url else []
+            })
+
+            st.write(response)
+            for url in image_url:
+                    logger.info(f"url: {url}")
+                    file_name = url[url.rfind('/')+1:]
+                    st.image(url, caption=file_name, use_container_width=True)            
 
         elif mode == '비용 분석':
             with st.status("thinking...", expanded=True, state="running") as status:
@@ -415,7 +440,7 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                 response_container = st.empty()
                 key_container = st.empty()
                 
-                response = aws_cost.implementation.run(request_id, status_container, response_container, key_container)
+                response = aws_cost.run(request_id, status_container, response_container, key_container)
 
                 st.write(response)
 
