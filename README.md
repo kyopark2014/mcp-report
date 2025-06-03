@@ -568,37 +568,22 @@ sudo runuser -l ec2-user -c 'docker run -p 8501:8501 streamlit-app'
 
 실행 결과는 아래와 같이 주어진 포맷에 따라서, 주요 비용 발생 요인, 이상 패턴, 최적화, 비용 추세에 대한 통합된 분석을 제공합니다. 
 
-<img width="298" alt="image" src="https://github.com/user-attachments/assets/f3d1e793-fe77-4b0d-a446-c7befe7da09e" />
-
-<img width="182" alt="image" src="https://github.com/user-attachments/assets/edaee716-a391-475f-a70d-c791466f6cd6" />
-
-<img width="302" alt="image" src="https://github.com/user-attachments/assets/9e23fab6-acfb-482b-bb01-e145b299a612" />
-
-
-최종 결과는 아래와 같이 보여집니다.
-
-<img src="https://github.com/user-attachments/assets/88ef1051-8663-43bb-ac79-84d0d335d7d5" width="750">
+![image](https://github.com/user-attachments/assets/5c8ead4f-cdf5-4caa-8f8d-daa6ef130c73)
 
 이때 얻어진 서비스 비용에 대한 분석 결과는 아래와 같습니다.
 
 ![image](https://github.com/user-attachments/assets/b1ccbc5e-566f-49f2-a539-9463dbdea6f0)
 
-```text
 이 파이 차트는 AWS 서비스 비용 분포를 보여주며, Amazon OpenSearch Service가 41.9%로 가장 큰 비중을 차지하고, 그 다음으로 Amazon Elastic Compute Cloud - Compute(21.1%), Amazon Bedrock(13%), EC2 - Other(10.6%) 순으로 비용이 발생하고 있으며, 나머지 서비스들(Amazon Virtual Private Cloud, Elastic Load Balancing, CloudWatch, Cost Explorer 등)은 각각 5% 미만의 상대적으로 작은 비중을 차지하고 있습니다.
-```
 
 리전별 비용은 아래와 같습니다.
 
 ![image](https://github.com/user-attachments/assets/dd996bb3-3897-4a83-82cf-9d038cc769eb)
 
-```text
 AWS 리전별 비용을 보여주는 그래프에서 us-west-2(미국 서부 오레곤) 리전이 약 1,900달러로 가장 높은 비용을 보이고 있으며, 다른 리전들(NoRegion, ap-northeast-1, ap-northeast-2, ap-southeast-1, eu-west-1, global, us-east-1, us-east-2)은 상대적으로 매우 낮은 비용을 나타내고 있습니다.
-```
 
 일자별 비용은 아래와 같습니다.
 
 ![image](https://github.com/user-attachments/assets/35736080-3dd3-46ca-a1ef-0a577ffce27d)
 
-```text
 AWS의 다양한 서비스들(Amplify, Cost Explorer, ECR, EC2, CloudFront 등) 중에서 AmazonCloudWatch가 5월 11일경에 약 $95까지 급격히 상승했다가 다시 감소하는 특이한 패턴을 보이며, 대부분의 다른 서비스들은 $0-30 사이의 안정적인 비용 추세를 2025년 5월 4일부터 6월 1일까지 유지하고 있습니다.
-```
