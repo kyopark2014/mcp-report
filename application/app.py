@@ -125,7 +125,7 @@ with st.sidebar:
         if environment == "user":        
             mcp_options = [
                 "default", "code interpreter", "aws document", "aws cost", "aws cli", 
-                "aws cloudwatch", "aws storage", "aws diagram", "image generation"
+                "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "perplexity", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "context7", "puppeteer", 
                 "playwright", "firecrawl", "obsidian", "airbnb", "사용자 설정"
@@ -133,7 +133,7 @@ with st.sidebar:
         else:
             mcp_options = [ 
                 "default", "code interpreter", "aws document", "aws cost", "aws cli", 
-                "aws cloudwatch", "aws storage", "image generation", "aws diagram",
+                "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", 
                 "playwright", "airbnb", "사용자 설정"
