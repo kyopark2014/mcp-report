@@ -1,6 +1,9 @@
 # MCP를 이용한 보고서 작성
 
-여기에서는 MCP로 agent를 생성하여 다양한 보고서를 생성하는 방법에 대해 설명합니다.
+여기에서는 MCP로 agent를 생성하여 다양한 보고서를 생성하는 방법에 대해 설명합니다. 전체적인 architecture는 아래와 같습니다. 여기에서는 디버깅의 편의성을 위해 EC2에 Streamlit을 올린 형태로 시스템을 구성하고 AWS cost explorer, AWS CLI, AWS Document를 이용해 데이터를 수집합니다. 또한 필요시 Tavily와 같은 외부 데이터 소스로부터 인터넷 검색을 수행할 수 있습니다. 사용자는 Amazon CloudFront와 ALB를 이용해 Streamlit으로 구성된 application을 안전하게 이용하고, CloudFront - S3로 보고서를 다운로드 받을 수 있습니다. 
+
+![image](https://github.com/user-attachments/assets/3d2bf057-50e5-4899-a1c7-c71233f6e90b)
+
 
 ## Workflow를 이용한 비용 분석
 
