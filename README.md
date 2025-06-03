@@ -379,50 +379,43 @@ def mcp_tools(state: CostState, config) -> dict:
     }
 ```
 
-Reflection agent는 아래와 같이 구성합니다. Reflection agent에 대한 상세 코드는 [chat.py](./application/chat.py)를 참조합니다.
+Reflection agent는 아래와 같이 구성합니다. Reflection agent에 대한 상세 코드는 [reflection_agent.py](./application/aws_cost/reflection_agent.py)를 참조합니다.
 
 ```python
-async def reflection_mcp_agent(draft, reflection):
-    global mcp_json
-    logger.info(f"mcp_json: {mcp_json}")
-    
-    server_params = load_multiple_mcp_server_parameters(mcp_json)
-    logger.info(f"server_params: {server_params}")
+async def run(draft, reflection):
+    server_params = chat.load_multiple_mcp_server_parameters()
 
     async with MultiServerMCPClient(server_params) as client:
-        ref = ""
         tools = client.get_tools()
-        if debug_mode == "Enable":
-            logger.info(f"tools: {tools}")
 
-        agent, config = create_reflection_agent(tools, draft)
+        instruction = (
+            f"<reflection>{reflection}</reflection>\n\n"
+            f"<draft>{draft}</draft>"
+        )
 
-        instraction = reflection['reflection']
-        search_queries = reflection['search_queries']
-        logger.info(f"reflection: {instraction}, search_queries: {search_queries}")
+        app = buildChatAgent(tools)
+        config = {
+            "recursion_limit": 50,
+            "tools": tools            
+        }
 
-        try:
-            response = await agent.ainvoke({"messages": instraction[0]}, config)
-            result = response["messages"][-1].content
+        value = None
+        inputs = {
+            "messages": [HumanMessage(content=instruction)]
+        }
 
-            debug_msgs = get_debug_messages()
-            for msg in debug_msgs:
-                # logger.info(f"msg: {msg}")
-                if "image" in msg:
-                    logger.info(f"image: {msg['image']}")
-                elif "text" in msg:
-                    logger.info(f"text: {msg['text']}")
+        references = []
+        final_output = None
+        async for output in app.astream(inputs, config):
+            for key, value in output.items():
+                logger.info(f"--> key: {key}, value: {value}")
+                final_output = output
+        
+        result = final_output["messages"][-1].content
+        logger.info(f"result: {result}")
+        image_url = final_output["image_url"] if "image_url" in final_output else []
 
-            image_url = response["image_url"] if "image_url" in response else []
-            logger.info(f"image_url: {image_url}")
-
-            for image in image_url:
-                logger.info(f"image: {image}")
-
-            return result
-        except Exception as e:
-            logger.error(f"Error during agent invocation: {str(e)}")
-            raise Exception(f"Agent invocation failed: {str(e)}")
+        return result, image_url
 ```
 
 
