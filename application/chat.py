@@ -273,6 +273,49 @@ def create_object(key, body):
         ContentType=content_type
     )    
 
+def updata_object(key, body, direction):
+    """
+    Create an object in S3 and return the URL. If the file already exists, append the new content.
+    """
+    s3_client = boto3.client(
+        service_name='s3',
+        region_name=bedrock_region
+    )
+    
+    try:
+        # Check if file exists
+        try:
+            response = s3_client.get_object(Bucket=s3_bucket, Key=key)
+            existing_body = response['Body'].read().decode('utf-8')
+            # Append new content to existing content
+
+            if direction == 'append':
+                updated_body = existing_body + '\n' + body
+            else: # prepend
+                updated_body = body + '\n' + existing_body
+        except s3_client.exceptions.NoSuchKey:
+            # File doesn't exist, use new body as is
+            updated_body = body
+            
+        # Content-Type based on file extension
+        content_type = 'application/octet-stream'  # default value
+        if key.endswith('.html'):
+            content_type = 'text/html'
+        elif key.endswith('.md'):
+            content_type = 'text/markdown'
+            
+        # Upload the updated content
+        s3_client.put_object(
+            Bucket=s3_bucket,
+            Key=key,
+            Body=updated_body,
+            ContentType=content_type
+        )
+        
+    except Exception as e:
+        logger.error(f"Error updating object in S3: {str(e)}")
+        raise e
+
 selected_chat = 0
 def get_chat(extended_thinking):
     global selected_chat, model_type
@@ -657,49 +700,6 @@ def print_doc(i, doc):
         text = doc.page_content
             
     logger.info(f"{i}: {text}, metadata:{doc.metadata}")
-
-def updata_object(key, body, direction):
-    """
-    Create an object in S3 and return the URL. If the file already exists, append the new content.
-    """
-    s3_client = boto3.client(
-        service_name='s3',
-        region_name=bedrock_region
-    )
-    
-    try:
-        # Check if file exists
-        try:
-            response = s3_client.get_object(Bucket=s3_bucket, Key=key)
-            existing_body = response['Body'].read().decode('utf-8')
-            # Append new content to existing content
-
-            if direction == 'append':
-                updated_body = existing_body + '\n' + body
-            else: # prepend
-                updated_body = body + '\n' + existing_body
-        except s3_client.exceptions.NoSuchKey:
-            # File doesn't exist, use new body as is
-            updated_body = body
-            
-        # Content-Type based on file extension
-        content_type = 'application/octet-stream'  # default value
-        if key.endswith('.html'):
-            content_type = 'text/html'
-        elif key.endswith('.md'):
-            content_type = 'text/markdown'
-            
-        # Upload the updated content
-        s3_client.put_object(
-            Bucket=s3_bucket,
-            Key=key,
-            Body=updated_body,
-            ContentType=content_type
-        )
-        
-    except Exception as e:
-        logger.error(f"Error updating object in S3: {str(e)}")
-        raise e
 
 def grade_document_based_on_relevance(conn, question, doc, models, selected):     
     chat = get_parallel_processing_chat(models, selected)
