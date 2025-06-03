@@ -455,6 +455,7 @@ def generate_insight(state: CostState, config) -> dict:
 
         "다음의 additional_context는 관련된 다른 보고서입니다. 이 보고서를 현재 작성하는 보고서에 추가해주세요. 단, 전체적인 문맥에 영향을 주면 안됩니다."
         "<additional_context>{additional_context}</additional_context>"
+        "결과는 영어로 작성하세요."
     )
 
     prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human)])
