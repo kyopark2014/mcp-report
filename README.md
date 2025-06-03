@@ -560,7 +560,7 @@ sudo runuser -l ec2-user -c 'docker run -p 8501:8501 streamlit-app'
 
 정보 수집을 위해 sevice, region, daily cost에 대한 비용을 수집한 후에 insight를 추출하여 reflection으로 분석한 후에, MCP를 이용하여 search_documentation, get_service_cost로 추가적인 정보를 수집합니다. 이후 다시 insight를 뽑고 보고서를 작성합니다.
 
-<img width="298" alt="image" src="https://github.com/user-attachments/assets/164ba1cf-a673-4b8d-b5c2-6de4aab32636" />
+<img width="692" alt="image" src="https://github.com/user-attachments/assets/567daa25-670d-49c9-b6f7-c34969d8d146" />
 
 이를 Graph diagram으로 그리면 아래와 같은 Plan으로 실행된 것울 알 수 있습니다.
 
