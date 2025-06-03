@@ -47,13 +47,84 @@ Provide the analysis results in the following format:
 The graph implemented with [LangGraph Builder](https://build.langchain.com/) is implemented as shown in [stub.py](./application/aws_cost/stub.py). This code only modifies the Agent name from the automatically generated code in LangGraph.
 
 ```python
-// ... existing code ...
+def CostAgent(
+    *,
+    state_schema: Optional[Type[Any]] = None,
+    config_schema: Optional[Type[Any]] = None,
+    input: Optional[Type[Any]] = None,
+    output: Optional[Type[Any]] = None,
+    impl: list[tuple[str, Callable]],
+) -> StateGraph:
+    """Create the state graph for CostAgent."""
+    # Declare the state graph
+    builder = StateGraph(
+        state_schema, config_schema=config_schema, input=input, output=output
+    )
+
+    nodes_by_name = {name: imp for name, imp in impl}
+
+    all_names = set(nodes_by_name)
+
+    expected_implementations = {
+        "service_cost",
+        "region_cost",
+        "daily_cost",
+        "generate_insight",
+        "reflect_context",
+        "should_end",
+        "mcp_tools",
+    }
+
+    missing_nodes = expected_implementations - all_names
+    if missing_nodes:
+        raise ValueError(f"Missing implementations for: {missing_nodes}")
+
+    extra_nodes = all_names - expected_implementations
+
+    if extra_nodes:
+        raise ValueError(
+            f"Extra implementations for: {extra_nodes}. Please regenerate the stub."
+        )
+
+    # Add nodes
+    builder.add_node("service_cost", nodes_by_name["service_cost"])
+    builder.add_node("region_cost", nodes_by_name["region_cost"])
+    builder.add_node("daily_cost", nodes_by_name["daily_cost"])
+    builder.add_node("generate_insight", nodes_by_name["generate_insight"])
+    builder.add_node("reflect_context", nodes_by_name["reflect_context"])
+    builder.add_node("mcp_tools", nodes_by_name["mcp_tools"])
+
+    # Add edges
+    builder.add_edge(START, "service_cost")
+    builder.add_edge("service_cost", "region_cost")
+    builder.add_edge("region_cost", "daily_cost")
+    builder.add_edge("daily_cost", "generate_insight")
+    builder.add_conditional_edges(
+        "generate_insight",
+        nodes_by_name["should_end"],
+        [
+            END,
+            "reflect_context",
+        ],
+    )
+    builder.add_edge("reflect_context", "mcp_tools")
+    builder.add_edge("mcp_tools", "generate_insight")
+    
+    return builder
 ```
 
 The state used for data exchange between nodes is as follows. For detailed code, refer to [implementation.py](./application/aws_cost/implementation.py). Here, service_costs, region_costs, and daily_costs are JSON data obtained using the Boto3 API, and appendix is also a JSON file containing image files and descriptions. additonal_context stores contents obtained through reflection and MCP tool utilization. iteration means the number of reflection repetitions, and reflection contains draft revisions and additional search terms. final_response stores the final answer.
 
 ```python
-// ... existing code ...
+class CostState(TypedDict):
+    service_costs: dict
+    region_costs: dict
+    daily_costs: dict
+    additional_context: list[str]
+    appendix: list[str]
+    iteration: int
+    reflection: list[str]
+    final_response: str
 ```
 
 ### Acquiring Various Data
@@ -61,7 +132,78 @@ The state used for data exchange between nodes is as follows. For detailed code,
 Not all APIs are done with MCP; the basic data for the report is obtained directly using boto3. Below, information on service usage is collected using cost explorer. The period is 30 days but can be changed according to the user's purpose. After converting the service usage information to a data frame, a pie chart is drawn and the result is saved as an appendix. Since the LLM may omit URL information such as figures in the final result, it is managed separately.
 
 ```python
-// ... existing code ...
+def service_cost(state: CostState, config) -> dict:
+    logger.info(f"###### service_cost ######")
+
+    logger.info(f"Getting cost analysis...")
+    days = 30
+
+    request_id = config.get("configurable", {}).get("request_id", "")
+
+    try:
+        end_date = datetime.now()
+        start_date = end_date - timedelta(days=days)
+        
+        # cost explorer
+        ce = boto3.client('ce')
+
+        # service cost
+        service_response = ce.get_cost_and_usage(
+            TimePeriod={
+                'Start': start_date.strftime('%Y-%m-%d'),
+                'End': end_date.strftime('%Y-%m-%d')
+            },
+            Granularity='MONTHLY',
+            Metrics=['UnblendedCost'],
+            GroupBy=[{'Type': 'DIMENSION', 'Key': 'SERVICE'}]
+        )
+        logger.info(f"service_response: {service_response}")
+
+    except Exception as e:
+        logger.info(f"Error in cost analysis: {str(e)}")
+        return None
+    
+    service_costs = pd.DataFrame([
+        {
+            'SERVICE': group['Keys'][0],
+            'cost': float(group['Metrics']['UnblendedCost']['Amount'])
+        }
+        for group in service_response['ResultsByTime'][0]['Groups']
+    ])
+    logger.info(f"Service Costs: {service_costs}")
+    
+    # service cost (pie chart)
+    fig_pie = px.pie(
+        service_costs,
+        values='cost',
+        names='SERVICE',
+        color='SERVICE',
+        title='Service Cost',
+        template='plotly_white',  # Clean background
+        color_discrete_sequence=px.colors.qualitative.Set3  # Color palette
+    )    
+
+    url = get_url(fig_pie, "service_cost")
+
+    task = "AWS 서비스 사용량"
+    output_images = f"![{task} 그래프]({url})\n\n"
+
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+
+    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요."
+    summary = get_summary(fig_pie, instruction)
+
+    body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    appendix = state["appendix"] if "appendix" in state else []
+    appendix.append(body)
+
+    return {
+        "appendix": appendix,
+        "service_costs": service_response,
+    }
 ```
 
 Similarly, region and daily costs can be extracted. For detailed code, refer to [implementation.py](./application/aws_cost/implementation.py).
@@ -71,7 +213,74 @@ Similarly, region and daily costs can be extracted. For detailed code, refer to 
 A draft is generated with the given data as shown below. Using additional_context with Reflection and MCP tool is effective in improving the draft. When generating a draft, the basic format is set using [cost_insight.md](./application/aws_cost/cost_insight.md) as shown below. Therefore, to maintain the basic format when generating insight, additional_context is updated using generate_insight, reflection, and mcp-tools.
 
 ```python
-// ... existing code ...
+def generate_insight(state: CostState, config) -> dict:
+    logger.info(f"###### generate_insight ######")
+
+    prompt_name = "cost_insight"
+    request_id = config.get("configurable", {}).get("request_id", "")    
+    additional_context = state["additional_context"] if "additional_context" in state else []
+
+    system_prompt=get_prompt_template(prompt_name)
+    logger.info(f"system_prompt: {system_prompt}")
+
+    human = (
+        "다음 AWS 비용 데이터를 분석하여 상세한 인사이트를 제공해주세요:"
+        "Cost Data:"
+        "<service_costs>{service_costs}</service_costs>"
+        "<region_costs>{region_costs}</region_costs>"
+        "<daily_costs>{daily_costs}</daily_costs>"
+
+        "다음의 additional_context는 관련된 다른 보고서입니다. 이 보고서를 현재 작성하는 보고서에 추가해주세요. 단, 전체적인 문맥에 영향을 주면 안됩니다."
+        "<additional_context>{additional_context}</additional_context>"
+    )
+
+    prompt = ChatPromptTemplate.from_messages([("system", system_prompt), ("human", human)])
+    logger.info(f'prompt: {prompt}')    
+
+    llm = chat.get_chat(extended_thinking="Disable")
+    chain = prompt | llm
+
+    service_costs = json.dumps(state["service_costs"])
+    region_costs = json.dumps(state["region_costs"])
+    daily_costs = json.dumps(state["daily_costs"])
+
+    try:
+        response = chain.invoke(
+            {
+                "service_costs": service_costs,
+                "region_costs": region_costs,
+                "daily_costs": daily_costs,
+                "additional_context": additional_context
+            }
+        )
+        logger.info(f"response: {response.content}")
+
+    except Exception:
+        err_msg = traceback.format_exc()
+        logger.debug(f"error message: {err_msg}")                    
+        raise Exception ("Not able to request to LLM")
+    
+    # logging in step.md
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    chat.updata_object(key, time + response.content, 'append')
+    
+    # report.md
+    key = f"artifacts/{request_id}_report.md"
+    body = "# AWS 사용량 분석\n\n" + response.content + "\n\n"  
+
+    appendix = state["appendix"] if "appendix" in state else []
+    values = '\n\n'.join(appendix)
+
+    logger.info(f"body: {body}")
+    chat.updata_object(key, time+body+values, 'prepend')
+
+    iteration = state["iteration"] if "iteration" in state else 0
+
+    return {
+        "final_response": body+values,
+        "iteration": iteration+1
+    }
 ```
 
 ### Identifying Improvements to the Draft
@@ -79,7 +288,58 @@ A draft is generated with the given data as shown below. Using additional_contex
 Draft improvements are performed as shown below. Intermediate results are saved in steps.md to check the progress.
 
 ```python
-// ... existing code ...
+class Reflection(BaseModel):
+    missing: str = Field(description="Critique of what is missing.")
+    advisable: str = Field(description="Critique of what is helpful for better answer")
+    superfluous: str = Field(description="Critique of what is superfluous")
+
+class Research(BaseModel):
+    """Provide reflection and then follow up with search queries to improve the answer."""
+
+    reflection: Reflection = Field(description="Your reflection on the initial answer.")
+    search_queries: list[str] = Field(
+        description="1-3 search queries for researching improvements to address the critique of your current answer."
+    )
+    
+def reflect(draft):
+    logger.info(f"###### reflect ######")
+
+    reflection = []
+    search_queries = []
+    for attempt in range(5):
+        llm = chat.get_chat(extended_thinking="Disable")
+        structured_llm = llm.with_structured_output(Research, include_raw=True)
+        
+        info = structured_llm.invoke(draft)
+        logger.info(f'attempt: {attempt}, info: {info}')
+            
+        if not info['parsed'] == None:
+            parsed_info = info['parsed']
+            reflection = [parsed_info.reflection.missing, parsed_info.reflection.advisable]
+            logger.info(f"reflection: {reflection}")
+            search_queries = parsed_info.search_queries
+            logger.info(f"search_queries: {search_queries}")            
+            break
+    
+    return {
+        "reflection": reflection,
+        "search_queries": search_queries
+    }
+
+def reflect_context(state: CostState, config) -> dict:
+    # earn reflection from the previous final response    
+    result = reflect(state["final_response"])
+
+    # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"Reflection: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
+    chat.updata_object(key, time + body, 'append')
+
+    return {
+        "reflection": result
+    }
 ```
 
 ### Acquiring Data Needed for Improvement (Reflection) with MCP
@@ -87,13 +347,78 @@ Draft improvements are performed as shown below. Intermediate results are saved 
 As shown below, the MCP Tools node obtains the data needed for reflection. The required data source may vary depending on the result of the reflection. By using MCP, you can select and utilize appropriate tools from various data sources.
 
 ```python
-// ... existing code ...
+def mcp_tools(state: CostState, config) -> dict:
+    draft = state['final_response']
+
+    appendix = state["appendix"] if "appendix" in state else []
+
+    reflection_result, image_url= asyncio.run(reflection_agent.run(draft, state["reflection"]))
+
+    value = ""
+    if image_url:
+        for url in image_url:
+            value += f"![image]({url})\n\n"
+    if value:
+        appendix.append(value)
+    
+    # logging in step.md
+    request_id = config.get("configurable", {}).get("request_id", "")
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    body = f"{reflection_result}\n\n"
+    value = '\n\n'.join(appendix)
+    chat.updata_object(key, time + body + value, 'append')
+
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
+
+    additional_context = state["additional_context"] if "additional_context" in state else []
+    additional_context.append(reflection_result)
+
+    return {
+        "additional_context": additional_context
+    }
 ```
 
 The Reflection agent is configured as follows. For detailed code on the Reflection agent, refer to [reflection_agent.py](./application/aws_cost/reflection_agent.py).
 
 ```python
-// ... existing code ...
+async def run(draft, reflection):
+    server_params = chat.load_multiple_mcp_server_parameters()
+
+    async with MultiServerMCPClient(server_params) as client:
+        tools = client.get_tools()
+
+        instruction = (
+            f"<reflection>{reflection}</reflection>\n\n"
+            f"<draft>{draft}</draft>"
+        )
+
+        app = buildChatAgent(tools)
+        config = {
+            "recursion_limit": 50,
+            "tools": tools            
+        }
+
+        value = None
+        inputs = {
+            "messages": [HumanMessage(content=instruction)]
+        }
+
+        references = []
+        final_output = None
+        async for output in app.astream(inputs, config):
+            for key, value in output.items():
+                logger.info(f"--> key: {key}, value: {value}")
+                final_output = output
+        
+        result = final_output["messages"][-1].content
+        logger.info(f"result: {result}")
+        image_url = final_output["image_url"] if "image_url" in final_output else []
+
+        return result, image_url
 ```
 
 ### Generating Documents with Reflected Improvements
@@ -101,7 +426,33 @@ The Reflection agent is configured as follows. For detailed code on the Reflecti
 After storing the data obtained with MCP in the context, the draft is improved as follows.
 
 ```python
-// ... existing code ...
+def revise_draft(draft, context):   
+    logger.info(f"###### revise_draft ######")
+        
+    system = (
+        "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
+        "당신이 작성하여야 할 보고서 <draft>의 소제목과 기본 포맷을 유지한 상태에서, 다음의 <context>의 내용을 추가합니다."
+        "초등학생도 쉽게 이해하도록 풀어서 씁니다."
+    )
+    human = (
+        "<draft>{draft}</draft>"
+        "<context>{context}</context>"
+    )
+                
+    reflection_prompt = ChatPromptTemplate.from_messages(
+        [
+            ("system", system),
+            ("human", human)
+        ]
+    )        
+    reflect = reflection_prompt | chat.get_chat(extended_thinking="Disable")
+        
+    result = reflect.invoke({
+        "draft": draft,
+        "context": context
+    })   
+                            
+    return result.content
 ```
 
 ### Running Locally
