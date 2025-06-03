@@ -185,13 +185,13 @@ def service_cost(state: CostState, config) -> dict:
 
     url = get_url(fig_pie, "service_cost")
 
-    task = "AWS 서비스 사용량"
-    output_images = f"![{task} 그래프]({url})\n\n"
+    task = "AWS Service Usage"
+    output_images = f"![{task} graph]({url})\n\n"
 
     key = f"artifacts/{request_id}_steps.md"
     time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
 
-    instruction = f"이 이미지는 {task}에 대한 그래프입니다. 하나의 문장으로 이 그림에 대해 500자로 설명하세요."
+    instruction = f"This image is a graph for {task}. Please describe this figure in one sentence within 500 characters."
     summary = get_summary(fig_pie, instruction)
 
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
@@ -224,13 +224,13 @@ def generate_insight(state: CostState, config) -> dict:
     logger.info(f"system_prompt: {system_prompt}")
 
     human = (
-        "다음 AWS 비용 데이터를 분석하여 상세한 인사이트를 제공해주세요:"
+        "Please analyze the following AWS cost data and provide detailed insights:"
         "Cost Data:"
         "<service_costs>{service_costs}</service_costs>"
         "<region_costs>{region_costs}</region_costs>"
         "<daily_costs>{daily_costs}</daily_costs>"
 
-        "다음의 additional_context는 관련된 다른 보고서입니다. 이 보고서를 현재 작성하는 보고서에 추가해주세요. 단, 전체적인 문맥에 영향을 주면 안됩니다."
+        "The following additional_context contains other related reports. Please add these reports to the current report you are writing. However, do not let them affect the overall context."
         "<additional_context>{additional_context}</additional_context>"
     )
 
@@ -267,7 +267,7 @@ def generate_insight(state: CostState, config) -> dict:
     
     # report.md
     key = f"artifacts/{request_id}_report.md"
-    body = "# AWS 사용량 분석\n\n" + response.content + "\n\n"  
+    body = "# AWS Usage Analysis\n\n" + response.content + "\n\n"  
 
     appendix = state["appendix"] if "appendix" in state else []
     values = '\n\n'.join(appendix)
@@ -430,9 +430,9 @@ def revise_draft(draft, context):
     logger.info(f"###### revise_draft ######")
         
     system = (
-        "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
-        "당신이 작성하여야 할 보고서 <draft>의 소제목과 기본 포맷을 유지한 상태에서, 다음의 <context>의 내용을 추가합니다."
-        "초등학생도 쉽게 이해하도록 풀어서 씁니다."
+        "You are a logical and intelligent AI that writes reports well."
+        "While maintaining the subtitles and basic format of the <draft> report you need to write, add the contents of the following <context>."
+        "Write in a way that even elementary school students can easily understand."
     )
     human = (
         "<draft>{draft}</draft>"
