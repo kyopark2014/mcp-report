@@ -1,6 +1,8 @@
 # MCP를 이용한 보고서 작성
 
-여기에서는 MCP로 agent를 생성하여 다양한 보고서를 생성하는 방법에 대해 설명합니다. 전체적인 architecture는 아래와 같습니다. 여기에서는 디버깅의 편의성을 위해 EC2에 Streamlit을 올린 형태로 시스템을 구성하고 AWS cost explorer, AWS CLI, AWS Document를 이용해 데이터를 수집합니다. 또한 필요시 Tavily와 같은 외부 데이터 소스로부터 인터넷 검색을 수행할 수 있습니다. 사용자는 Amazon CloudFront와 ALB를 이용해 Streamlit으로 구성된 application을 안전하게 이용하고, CloudFront - S3로 보고서를 다운로드 받을 수 있습니다. 
+여기에서는 MCP로 agent를 생성하여 다양한 보고서를 생성하는 방법에 대해 설명합니다. 각종 API를 이용해 필요한 데이터를 수집하고 LLM의 prompt를 이용하여 적절한 보고서를 생성할 수 있습니다. 생성된 보고서는 agent의 reflection pattern을 이용하여 개선점과 추가 검색할 키워드를 추출하고 이를 기반으로 새로운 보고서를 생성할 수 있습니다. MCP를 이용하면 보고서의 개선점에 따라 추가 데이터를 수집하여야 할때 다양한 데이터 소스로 부터 상황에 맞는 데이터를 가져올수 있고 이를 통해 동적인 데이터 사용이 가능합니다. 또한 데이터 API가 변경되어 새로운 tool이 추가되거나 데이터 포맷이 바뀌어도 application에 영향을 주지 않습니다. 
+
+전체적인 architecture는 아래와 같습니다. 여기에서는 디버깅의 편의성을 위해 EC2에 Streamlit을 올린 형태로 시스템을 구성하고 AWS cost explorer, AWS CLI, AWS Document를 이용해 데이터를 수집합니다. 또한 필요시 Tavily와 같은 외부 데이터 소스로부터 인터넷 검색을 수행할 수 있습니다. 사용자는 Amazon CloudFront와 ALB를 이용해 Streamlit으로 구성된 application을 안전하게 이용하고, CloudFront - S3로 보고서를 다운로드 받을 수 있습니다. 
 
 ![image](https://github.com/user-attachments/assets/3d2bf057-50e5-4899-a1c7-c71233f6e90b)
 
