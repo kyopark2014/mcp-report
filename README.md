@@ -344,7 +344,7 @@ def reflect_context(state: CostState, config) -> dict:
 
 ### MCP로 개선(reflection)에 필요한 데이터 획득
 
-아래와 같이 MCP Tools 노드에서 reflection에 필요한 데이터를 가져옵니다. 
+아래와 같이 MCP Tools 노드에서 reflection에 필요한 데이터를 가져옵니다. Reflection의 결과에 따라서 필요한 데이터 소스가 달라질 수 있습니다. MCP를 사용함으로써 다양한 데이터 소스로부터 적절한 tool들을 선택하여 활용할 수 있습니다.
 
 ```python
 def mcp_tools(state: CostState, config) -> dict:
