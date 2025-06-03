@@ -345,18 +345,31 @@ def reflect_context(state: CostState, config) -> dict:
 
 ```python
 def mcp_tools(state: CostState, config) -> dict:
-    logger.info(f"###### mcp_tools ######")
     draft = state['final_response']
 
-    reflection_result = chat.run_reflection_agent(draft, state["reflection"])
-    logger.info(f"reflection result: {reflection_result}")
+    appendix = state["appendix"] if "appendix" in state else []
 
+    reflection_result, image_url= asyncio.run(reflection_agent.run(draft, state["reflection"]))
+
+    value = ""
+    if image_url:
+        for url in image_url:
+            value += f"![image]({url})\n\n"
+    if value:
+        appendix.append(value)
+    
     # logging in step.md
     request_id = config.get("configurable", {}).get("request_id", "")
     key = f"artifacts/{request_id}_steps.md"
     time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
     body = f"{reflection_result}\n\n"
-    chat.updata_object(key, time + body, 'append')
+    value = '\n\n'.join(appendix)
+    chat.updata_object(key, time + body + value, 'append')
+
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     additional_context = state["additional_context"] if "additional_context" in state else []
     additional_context.append(reflection_result)
