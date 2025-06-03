@@ -565,7 +565,7 @@ sudo runuser -l ec2-user -c 'docker run -p 8501:8501 streamlit-app'
 
 After collecting costs for service, region, and daily, insight is extracted and analyzed with reflection, and additional information is collected using MCP with search_documentation and get_service_cost. Then, insight is extracted again and the report is written.
 
-<img width="692" alt="image" src="https://github.com/user-attachments/assets/567daa25-670d-49c9-b6f7-c34969d8d146" />
+![image](https://github.com/user-attachments/assets/b97dfc98-a672-4732-bbfb-ae0367daabe5)
 
 If you draw this as a graph diagram, you can see that it was executed as the following plan.
 
