@@ -286,8 +286,14 @@ async def run(draft, reflection, status_container, response_container, key_conta
 
         if chat.debug_mode == "Enable":
             logger.info(f"tools: {tools}")
-            response_container.info(f"tools: {tools[:500]}")
-            response_msg.append(f"tools: {tools[:500]}")
+            
+            tool_info = []
+            for tool in tools:
+                tool_info.append(f"{tool.name}: {tool.description[:100]}")
+            tool_summary = "\n".join(tool_info)
+
+            response_container.info(f"{tool_summary}")
+            response_msg.append(f"{tool_summary}")
 
         instruction = (
             f"<reflection>{reflection}</reflection>\n\n"

@@ -160,8 +160,12 @@ def get_status_msg(status):
     global status_msg
     status_msg.append(status)
 
-    status = " -> ".join(status_msg)
-    return "[status]\n" + status + "..."
+    if status != "end":
+        status = " -> ".join(status_msg)
+        return "[status]\n" + status + "..."
+    else: 
+        status = " -> ".join(status_msg)
+        return "[status]\n" + status
 
 response_msg = []
 
@@ -586,9 +590,13 @@ def mcp_tools(state: CostState, config) -> dict:
 def should_end(state: CostState, config) -> str:
     logger.info(f"###### should_end ######")
     iteration = state["iteration"] if "iteration" in state else 0
+    status_container = config.get("configurable", {}).get("status_container", None)
     
     if iteration > config.get("configurable", {}).get("max_iteration", 1):
         logger.info(f"max iteration reached!")
+
+        if chat.debug_mode == "Enable":
+            status_container.info(get_status_msg("end"))
         next = END
     else:
         logger.info(f"additional information is required!")

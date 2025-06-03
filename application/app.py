@@ -369,7 +369,7 @@ if clear_button==False and mode == '비용 분석':
     st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Always show the chat input
-if prompt := st.chat_input("메시지를 입력하세요."):
+if mode != '비용 분석' and (prompt := st.chat_input("메시지를 입력하세요.")):
     with st.chat_message("user"):  # display user message in chat message container
         st.markdown(prompt)
 
@@ -432,21 +432,3 @@ if prompt := st.chat_input("메시지를 입력하세요."):
                     logger.info(f"url: {url}")
                     file_name = url[url.rfind('/')+1:]
                     st.image(url, caption=file_name, use_container_width=True)            
-
-        elif mode == '비용 분석':
-            with st.status("thinking...", expanded=True, state="running") as status:
-                #response = cost.ask_cost_insights(prompt)
-
-                # request id
-                request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-                logger.info(f"request_id: {request_id}")
-
-                status_container = st.empty()            
-                response_container = st.empty()
-                key_container = st.empty()
-                
-                response = aws_cost.run(request_id, status_container, response_container, key_container)
-
-                st.write(response)
-
-                st.session_state.messages.append({"role": "assistant", "content": response})
