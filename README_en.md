@@ -573,7 +573,7 @@ If you draw this as a graph diagram, you can see that it was executed as the fol
 
 The execution result provides an integrated analysis of major cost drivers, abnormal patterns, optimization, and cost trends according to the given format.
 
-![image](https://github.com/user-attachments/assets/5c8ead4f-cdf5-4caa-8f8d-daa6ef130c73)
+![image](https://github.com/user-attachments/assets/5bfa8865-efc9-4dc7-9ff5-a0d3f20fb796)
 
 The analysis result for the obtained service cost is as follows.
 
