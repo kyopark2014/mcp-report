@@ -12,6 +12,7 @@ import string
 import os
 import pwd
 import asyncio
+import biology_agent.agent as bio_agent
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -42,11 +43,49 @@ logger.info(f"environment: {environment}")
 # title
 st.set_page_config(page_title='Report', page_icon=None, layout="centered", initial_sidebar_state="auto", menu_items=None)
 
-# 사이드바 너비 조정을 위한 CSS
+# CSS for adjusting sidebar width and checkbox visibility
 st.markdown("""
     <style>
+    /* Sidebar width adjustment */
     [data-testid="stSidebar"][aria-expanded="true"] {
         width: 400px !important;
+    }
+
+    /* Improve checkbox style */
+    .stAlert input[type="checkbox"] {
+        width: 20px !important;
+        height: 20px !important;
+        margin: 0 5px 0 0 !important;
+        border: 2px solid #666 !important;
+        border-radius: 3px !important;
+        appearance: none !important;
+        -webkit-appearance: none !important;
+        background-color: white !important;
+    }
+    
+    .stAlert input[type="checkbox"]:checked {
+        background-color: white !important;
+        border-color: #666 !important;
+        position: relative;
+    }
+    
+    .stAlert input[type="checkbox"]:checked::after {
+        content: "✓";
+        color: #ff0000;
+        position: absolute;
+        left: 4px;
+        top: -3px;
+        font-size: 16px;
+        font-weight: bold;
+        text-shadow: 1px 1px 1px rgba(0,0,0,0.1);
+    }
+    
+    /* Checkbox label style */
+    .stAlert label {
+        font-size: 14px !important;
+        color: #333 !important;
+        margin-left: 5px !important;
+        font-weight: 500 !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -64,7 +103,10 @@ mode_descriptions = {
     "Agent (Chat)": [
         "MCP를 활용한 Agent를 이용합니다. 채팅 히스토리를 이용해 interative한 대화를 즐길 수 있습니다."
     ],
-    "비용 분석": [
+    "Biology Agent": [
+        "Biology Agent를 이용합니다. 왼쪽 메뉴에서 필요한 MCP를 선택하세요."
+    ],
+    "비용 분석 Agent": [
         "Cloud 사용에 대한 분석을 수행합니다."
     ]
 }
@@ -111,13 +153,13 @@ with st.sidebar:
     
     # radio selection
     mode = st.radio(
-        label="원하는 대화 형태를 선택하세요. ",options=["일상적인 대화", "RAG", "Agent", "Agent (Chat)", "비용 분석"], index=2
+        label="원하는 대화 형태를 선택하세요. ",options=["일상적인 대화", "RAG", "Agent", "Agent (Chat)", "Biology Agent", "비용 분석 Agent"], index=2
     )   
     st.info(mode_descriptions[mode][0])
     
     # mcp selection
     mcp = ""
-    if mode=='Agent' or mode=='Agent (Chat)' or mode=='비용 분석':
+    if mode=='Agent' or mode=='Agent (Chat)' or mode=='Biology Agent' or mode=='비용 분석 Agent':
         # MCP Config JSON input
         st.subheader("⚙️ MCP Config")
 
@@ -128,35 +170,41 @@ with st.sidebar:
                 "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "perplexity", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "context7", "puppeteer", 
-                "playwright", "firecrawl", "obsidian", "airbnb", "사용자 설정"
+                "playwright", "firecrawl", "obsidian", "airbnb", 
+                "pubmed", "chembl", "clinicaltrial", "arxiv-manual", "tavily-manual",
+                "사용자 설정"
             ]
         else:
             mcp_options = [ 
                 "default", "code interpreter", "aws document", "aws cost", "aws cli", 
                 "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "ArXiv", "wikipedia", 
-                "filesystem", "terminal", "text editor", 
-                "playwright", "airbnb", "사용자 설정"
+                "filesystem", "terminal", "text editor", "playwright", "airbnb", 
+                "pubmed", "chembl", "clinicaltrial", "arxiv-manual", "tavily-manual",
+                "사용자 설정"
             ]
         mcp_selections = {}
         default_selections = ["default", "tavily", "aws cli", "code interpreter"]
 
+        if mode == "Biology Agent":
+            default_selections = ["pubmed", "chembl", "clinicaltrial", "arxiv-manual", "tavily-manual"]
+
         with st.expander("MCP 옵션 선택", expanded=True):            
-            # 2개의 컬럼 생성
+            # Create 2 columns
             col1, col2 = st.columns(2)
             
-            # 옵션을 두 그룹으로 나누기
+            # Divide options into two groups
             mid_point = len(mcp_options) // 2
             first_half = mcp_options[:mid_point]
             second_half = mcp_options[mid_point:]
             
-            # 첫 번째 컬럼에 첫 번째 그룹 표시
+            # Display first group in first column
             with col1:
                 for option in first_half:
                     default_value = option in default_selections
                     mcp_selections[option] = st.checkbox(option, key=f"mcp_{option}", value=default_value)
             
-            # 두 번째 컬럼에 두 번째 그룹 표시
+            # Display second group in second column
             with col2:
                 for option in second_half:
                     default_value = option in default_selections
@@ -177,7 +225,7 @@ with st.sidebar:
                 mcp_config.mcp_user_config = json.loads(mcp_info)
                 logger.info(f"mcp_user_config: {mcp_config.mcp_user_config}")
         
-        if mcp_selections["image generation"]:
+        if "image generation" in mcp_selections:
             enable_seed = st.checkbox("Seed Image", value=False)
 
             if enable_seed:
@@ -224,6 +272,15 @@ with st.sidebar:
     multiRegion = 'Enable' if select_multiRegion else 'Disable'
     #print('multiRegion: ', multiRegion)
 
+    select_reasoning = st.checkbox('Reasoning', value=False)
+    reasoningMode = 'Enable' if select_reasoning and modelName=='Claude 3.7 Sonnet' else 'Disable'
+    logger.info(f"reasoningMode: {reasoningMode}")
+
+    # RAG grading
+    select_grading = st.checkbox('Grading', value=False)
+    gradingMode = 'Enable' if select_grading else 'Disable'
+    # logger.info(f"gradingMode: {gradingMode}")
+
     uploaded_file = None
     if mode=='이미지 분석':
         st.subheader("🌇 이미지 업로드")
@@ -233,7 +290,7 @@ with st.sidebar:
         # print('fileId: ', chat.fileId)
         uploaded_file = st.file_uploader("RAG를 위한 파일을 선택합니다.", type=["pdf", "txt", "py", "md", "csv", "json"], key=chat.fileId)
 
-    chat.update(modelName, debugMode, multiRegion, mcp)
+    chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, mcp)
 
     st.success(f"Connected to {modelName}", icon="💚")
     clear_button = st.button("대화 초기화", key="clear")
@@ -339,7 +396,7 @@ if seed_image_url and clear_button==False and enable_seed==True:
     st.image(seed_image_url, caption="이미지 미리보기", use_container_width=True)
     logger.info(f"preview: {seed_image_url}")
     
-if clear_button==False and mode == '비용 분석':
+if clear_button==False and mode == '비용 분석 Agent':
     request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
 
     template = open(os.path.join(os.path.dirname(__file__), f"aws_cost/report.html")).read()
@@ -369,7 +426,7 @@ if clear_button==False and mode == '비용 분석':
     st.session_state.messages.append({"role": "assistant", "content": response})
 
 # Always show the chat input
-if mode != '비용 분석' and (prompt := st.chat_input("메시지를 입력하세요.")):
+if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입력하세요.")):
     with st.chat_message("user"):  # display user message in chat message container
         st.markdown(prompt)
 
@@ -411,9 +468,9 @@ if mode != '비용 분석' and (prompt := st.chat_input("메시지를 입력하�
 
             st.write(response)
             for url in image_url:
-                    logger.info(f"url: {url}")
-                    file_name = url[url.rfind('/')+1:]
-                    st.image(url, caption=file_name, use_container_width=True)
+                logger.info(f"url: {url}")
+                file_name = url[url.rfind('/')+1:]
+                st.image(url, caption=file_name, use_container_width=True)
 
         elif mode == 'Agent (Chat)':
             sessionState = ""
@@ -429,6 +486,24 @@ if mode != '비용 분석' and (prompt := st.chat_input("메시지를 입력하�
 
             st.write(response)
             for url in image_url:
-                    logger.info(f"url: {url}")
-                    file_name = url[url.rfind('/')+1:]
-                    st.image(url, caption=file_name, use_container_width=True)            
+                logger.info(f"url: {url}")
+                file_name = url[url.rfind('/')+1:]
+                st.image(url, caption=file_name, use_container_width=True)            
+
+        elif mode == 'Biology Agent':
+            sessionState = ""
+            chat.references = []
+            chat.image_url = []
+            response, image_url = asyncio.run(bio_agent.run_biology_agent(prompt, st))
+
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "images": image_url if image_url else []
+            })
+
+            st.write(response)
+            for url in image_url:
+                logger.info(f"url: {url}")
+                file_name = url[url.rfind('/')+1:]
+                st.image(url, caption=file_name, use_container_width=True)           

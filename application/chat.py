@@ -67,7 +67,8 @@ checkpointers[userId] = checkpointer
 memorystores[userId] = memorystore
 
 reasoning_mode = 'Disable'
-debug_messages = []  # List to store debug messages
+# List to store debug messages
+debug_messages = []  
 
 def get_debug_messages():
     global debug_messages
@@ -136,13 +137,13 @@ def initiate():
     logger.info(f"userId: {userId}")
 
     if userId in map_chain:  
-            # print('memory exist. reuse it!')
+            # memory exists, reuse it
             memory_chain = map_chain[userId]
 
             checkpointer = checkpointers[userId]
             memorystore = memorystores[userId]
     else: 
-        # print('memory does not exist. create new one!')        
+        # memory does not exist, create new one
         memory_chain = ConversationBufferWindowMemory(memory_key="chat_history", output_key='answer', return_messages=True, k=5)
         map_chain[userId] = memory_chain
 
@@ -216,9 +217,21 @@ client = boto3.client(
 )  
 
 mcp_json = ""
-def update(modelName, debugMode, multiRegion, mcp):    
-    global model_name, model_id, model_type, debug_mode, multi_region
-    global models, mcp_json
+grading_mode = 'Disable'
+reasoning_mode = 'Disable'
+
+def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, mcp):    
+    global model_name, model_id, model_type, debug_mode, multi_region, reasoning_mode
+    global models, mcp_json, grading_mode
+
+    # load mcp.env    
+    mcp_env = utils.load_mcp_env()
+    logger.info(f"mcp_env: {mcp_env}")
+    if not mcp_env:
+        mcp_env = {
+            'multi_region': 'Disable',
+            'grading_mode': 'Disable'
+        }
     
     if model_name != modelName:
         model_name = modelName
@@ -235,10 +248,23 @@ def update(modelName, debugMode, multiRegion, mcp):
     if multi_region != multiRegion:
         multi_region = multiRegion
         logger.info(f"multi_region: {multi_region}")
+        mcp_env['multi_region'] = multi_region
+
+    if grading_mode != gradingMode:
+        grading_mode = gradingMode
+        logger.info(f"grading_mode: {grading_mode}")            
+        mcp_env['grading_mode'] = grading_mode
+
+    if reasoning_mode != reasoningMode:
+        reasoning_mode = reasoningMode
+        logger.info(f"reasoning_mode: {reasoning_mode}")
 
     mcp_json = mcp
     logger.info(f"mcp_json: {mcp_json}")
 
+    utils.save_mcp_env(mcp_env)
+    logger.info(f"mcp.env: {mcp_env}")
+    
 def clear_chat_history():
     memory_chain = []
     map_chain[userId] = memory_chain
@@ -1286,6 +1312,83 @@ def get_summary_of_uploaded_file(file_name, st):
 
     return msg
 
+def create_object(key, body):
+    """
+    Create an object in S3 and return the URL. If the file already exists, append the new content.
+    """
+    s3_client = boto3.client(
+        service_name='s3',
+        region_name=bedrock_region
+    )
+    
+    # Content-Type based on file extension
+    content_type = 'application/octet-stream'  # default value
+    if key.endswith('.html'):
+        content_type = 'text/html'
+    elif key.endswith('.md'):
+        content_type = 'text/markdown'
+    
+    s3_client.put_object(
+        Bucket=s3_bucket,
+        Key=key,
+        Body=body,
+        ContentType=content_type
+    )
+    
+def updata_object(key, body, direction):
+    """
+    Create an object in S3 and return the URL. If the file already exists, append the new content.
+    """
+    s3_client = boto3.client(
+        service_name='s3',
+        region_name=bedrock_region
+    )
+    
+    try:
+        # Check if file exists
+        try:
+            response = s3_client.get_object(Bucket=s3_bucket, Key=key)
+            existing_body = response['Body'].read().decode('utf-8')
+            # Append new content to existing content
+
+            if direction == 'append':
+                updated_body = existing_body + '\n' + body
+            else: # prepend
+                updated_body = body + '\n' + existing_body
+        except s3_client.exceptions.NoSuchKey:
+            # File doesn't exist, use new body as is
+            updated_body = body
+            
+        # Content-Type based on file extension
+        content_type = 'application/octet-stream'  # default value
+        if key.endswith('.html'):
+            content_type = 'text/html'
+        elif key.endswith('.md'):
+            content_type = 'text/markdown'
+            
+        # Upload the updated content
+        s3_client.put_object(
+            Bucket=s3_bucket,
+            Key=key,
+            Body=updated_body,
+            ContentType=content_type
+        )
+        
+    except Exception as e:
+        logger.error(f"Error updating object in S3: {str(e)}")
+        raise e
+
+def get_object(key):
+    """
+    Get an object from S3 and return the content
+    """
+    s3_client = boto3.client(
+        service_name='s3',
+        region_name=bedrock_region
+    )
+    response = s3_client.get_object(Bucket=s3_bucket, Key=key)
+    return response['Body'].read().decode('utf-8')
+
 ####################### LangChain #######################
 # Image Summarization
 #########################################################
@@ -1626,7 +1729,7 @@ async def run_agent(query, historyMode, st):
             key_container = st.empty()
             response_container = st.empty()
                         
-            result, image_url = await agent.run(query, tools, status_container, response_container, key_container, historyMode)            
+            result, image_url = await agent.run(query, tools, None, status_container, response_container, key_container, historyMode)            
 
         if agent.response_msg:
             with st.expander(f"수행 결과"):
@@ -1637,4 +1740,3 @@ async def run_agent(query, historyMode, st):
         logger.info(f"image_url: {image_url}")
     
     return result, image_url
-

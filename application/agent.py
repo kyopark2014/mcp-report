@@ -50,6 +50,7 @@ async def call_model(state: State, config):
     status_container = config.get("configurable", {}).get("status_container", None)
     response_container = config.get("configurable", {}).get("response_container", None)
     tools = config.get("configurable", {}).get("tools", None)
+    system_prompt = config.get("configurable", {}).get("system_prompt", None)
     
     if isinstance(last_message, ToolMessage):
         tool_name = last_message.name
@@ -84,13 +85,16 @@ async def call_model(state: State, config):
             status_container.info(get_status_msg(f"{last_message.name}"))
             response_container.info(f"{last_message.content[:800]}")
             response_msg.append(last_message.content[:800])    
-        
-    system = (
-        "당신의 이름은 서연이고, 질문에 친근한 방식으로 대답하도록 설계된 대화형 AI입니다."
-        "상황에 맞는 구체적인 세부 정보를 충분히 제공합니다."
-        "모르는 질문을 받으면 솔직히 모른다고 말합니다."
-        "한국어로 답변하세요."
-    )
+    
+    if system_prompt:
+        system = system_prompt
+    else:
+        system = (
+            "당신의 이름은 서연이고, 질문에 친근한 방식으로 대답하도록 설계된 대화형 AI입니다."
+            "상황에 맞는 구체적인 세부 정보를 충분히 제공합니다."
+            "모르는 질문을 받으면 솔직히 모른다고 말합니다."
+            "한국어로 답변하세요."
+        )
 
     chatModel = chat.get_chat(extended_thinking=chat.reasoning_mode)
     model = chatModel.bind_tools(tools)
@@ -350,3 +354,65 @@ async def run(question, tools, status_container, response_container, key_contain
     image_url = value["image_url"] if "image_url" in value else []
 
     return result, image_url
+
+async def run_manus(question, tools, system_prompt, status_container, response_container, key_container, historyMode, previous_status_msg, previous_response_msg):
+    global status_msg, response_msg
+    status_msg = previous_status_msg
+    response_msg = previous_response_msg
+
+    if chat.debug_mode == "Enable":
+        status_container.info(get_status_msg("(start"))
+
+    if historyMode == "Enable":
+        app = buildChatAgentWithHistory(tools)
+        config = {
+            "recursion_limit": 50,
+            "configurable": {"thread_id": chat.userId},
+            "status_container": status_container,
+            "response_container": response_container,
+            "key_container": key_container,
+            "tools": tools,
+            "system_prompt": system_prompt
+        }
+    else:
+        app = buildChatAgent(tools)
+        config = {
+            "recursion_limit": 50,
+            "status_container": status_container,
+            "response_container": response_container,
+            "key_container": key_container,
+            "tools": tools,
+            "system_prompt": system_prompt
+        }
+
+    value = None
+    inputs = {
+        "messages": [HumanMessage(content=question)]
+    }
+
+    references = []
+    final_output = None
+    async for output in app.astream(inputs, config):
+        for key, value in output.items():
+            logger.info(f"--> key: {key}, value: {value}")
+            final_output = output
+            logger.info(f"final_output: {final_output}")
+
+            # refs = extract_reference(value["messages"])
+            # if refs:
+            #     for r in refs:
+            #         references.append(r)
+            #         logger.info(f"r: {r}")
+                
+    result = final_output["messages"][-1].content
+
+    # logger.info(f"references: {references}")
+    # if references:
+    #     ref = "\n\n### Reference\n"
+    #     for i, reference in enumerate(references):
+    #         ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
+    #     result += ref
+
+    image_url = final_output["image_url"] if "image_url" in value else []
+
+    return result, image_url, status_msg, response_msg
