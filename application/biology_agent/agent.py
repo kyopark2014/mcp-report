@@ -30,6 +30,7 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 
 import logging
 import sys
+from reportlab.lib import colors
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -165,16 +166,16 @@ async def generate_pdf_report(report_content: str, filename: str) -> str:
     Returns:
         A message indicating the result of PDF generation
     """
+    logger.info(f'###### generate_pdf_report ######')
+    
     try:
         # Ensure directory exists
         os.makedirs("reports", exist_ok=True)
         
-        # Add timestamp to filename
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        timestamped_filename = f"{filename}_{timestamp}"
-        
         # Set up the PDF file
-        filepath = f"reports/{timestamped_filename}.pdf"
+        filepath = f"reports/{filename}.pdf"
+        logger.info(f"filepath: {filepath}")
+
         doc = SimpleDocTemplate(filepath, pagesize=letter)
         
         # Register TTF font directly (specify path to NanumGothic font file)
@@ -185,10 +186,23 @@ async def generate_pdf_report(report_content: str, filename: str) -> str:
         styles = getSampleStyleSheet()
         styles.add(ParagraphStyle(name='Normal_KO', 
                                 fontName='NanumGothic', 
-                                fontSize=10))
+                                fontSize=10,
+                                spaceAfter=12))  # 문단 간격 증가
         styles.add(ParagraphStyle(name='Heading1_KO', 
                                 fontName='NanumGothic', 
-                                fontSize=16))
+                                fontSize=16,
+                                spaceAfter=20,  # 제목 후 여백 증가
+                                textColor=colors.HexColor('#0000FF')))  # 파란색
+        styles.add(ParagraphStyle(name='Heading2_KO', 
+                                fontName='NanumGothic', 
+                                fontSize=14,
+                                spaceAfter=16,  # 제목 후 여백 증가
+                                textColor=colors.HexColor('#0000FF')))  # 파란색
+        styles.add(ParagraphStyle(name='Heading3_KO', 
+                                fontName='NanumGothic', 
+                                fontSize=12,
+                                spaceAfter=14,  # 제목 후 여백 증가
+                                textColor=colors.HexColor('#0000FF')))  # 파란색
         
         # Process content
         elements = []
@@ -197,16 +211,12 @@ async def generate_pdf_report(report_content: str, filename: str) -> str:
         for line in lines:
             if line.startswith('# '):
                 elements.append(Paragraph(line[2:], styles['Heading1_KO']))
-                elements.append(Spacer(1, 12))
             elif line.startswith('## '):
-                elements.append(Paragraph(line[3:], styles['Heading2']))
-                elements.append(Spacer(1, 10))
+                elements.append(Paragraph(line[3:], styles['Heading2_KO']))
             elif line.startswith('### '):
-                elements.append(Paragraph(line[4:], styles['Heading3']))
-                elements.append(Spacer(1, 8))
+                elements.append(Paragraph(line[4:], styles['Heading3_KO']))
             elif line.strip():  # Skip empty lines
                 elements.append(Paragraph(line, styles['Normal_KO']))
-                elements.append(Spacer(1, 6))
         
         # Build PDF
         doc.build(elements)
@@ -217,8 +227,7 @@ async def generate_pdf_report(report_content: str, filename: str) -> str:
         
         # Fallback to text file
         try:
-            # Use the same timestamped filename for text fallback
-            text_filepath = f"reports/{timestamped_filename}.txt"
+            text_filepath = f"reports/{filename}.txt"
             with open(text_filepath, 'w', encoding='utf-8') as f:
                 f.write(report_content)
             return f"PDF generation failed. Saved as text file instead: {text_filepath}"
@@ -518,6 +527,8 @@ async def Reporter(state: State, config: dict) -> dict:
 
     if chat.debug_mode == "Enable":
         status_container.info(get_status_msg("end)"))
+
+    await generate_pdf_report(result.content + values, request_id)
 
     return {
         "report": result.content

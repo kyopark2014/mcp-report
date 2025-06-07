@@ -167,7 +167,7 @@ with st.sidebar:
         if environment == "user":        
             mcp_options = [
                 "default", "code interpreter", "aws document", "aws cost", "aws cli", 
-                "aws cloudwatch", "aws storage", "aws diagram", "image generation",
+                "use_aws","aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "perplexity", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "context7", "puppeteer", 
                 "playwright", "firecrawl", "obsidian", "airbnb", 
@@ -177,14 +177,14 @@ with st.sidebar:
         else:
             mcp_options = [ 
                 "default", "code interpreter", "aws document", "aws cost", "aws cli", 
-                "aws cloudwatch", "aws storage", "aws diagram", "image generation",
+                "use_aws", "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "playwright", "airbnb", 
                 "pubmed", "chembl", "clinicaltrial", "arxiv-manual", "tavily-manual",
                 "사용자 설정"
             ]
         mcp_selections = {}
-        default_selections = ["default", "tavily", "aws cli", "code interpreter"]
+        default_selections = ["default", "tavily", "use_aws", "code interpreter"]
 
         if mode == "Biology Agent":
             default_selections = ["pubmed", "chembl", "clinicaltrial", "arxiv-manual", "tavily-manual"]
