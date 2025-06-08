@@ -58,20 +58,25 @@ async def call_model(state: State, config):
         logger.info(f"tool_name: {tool_name}, content: {tool_content[:800]}")
 
         try:
-            json_data = json.loads(tool_content)
-            logger.info(f"json_data: {json_data}")
-            if isinstance(json_data, dict) and "path" in json_data:
-                path = json_data["path"]
-                if isinstance(path, list):
-                    for url in path:
-                        image_url.append(url)
-                else:
-                    image_url.append(path)
-
-                logger.info(f"image_url: {image_url}")
+            if isinstance(tool_content, list):
                 if chat.debug_mode == "Enable":
-                    response_container.info(f"Added path to image_url: {json_data['path']}")
-                    response_msg.append(f"Added path to image_url: {json_data['path']}")
+                    response_container.info(f"{tool_name}: {str(tool_content)}")
+                    response_msg.append(f"{tool_name}: {str(tool_content)}")
+            else:
+                json_data = json.loads(tool_content)
+                logger.info(f"json_data: {json_data}")
+                if isinstance(json_data, dict) and "path" in json_data:
+                    path = json_data["path"]
+                    if isinstance(path, list):
+                        for url in path:
+                            image_url.append(url)
+                    else:
+                        image_url.append(path)
+
+                    logger.info(f"image_url: {image_url}")
+                    if chat.debug_mode == "Enable":
+                        response_container.info(f"Added path to image_url: {json_data['path']}")
+                        response_msg.append(f"Added path to image_url: {json_data['path']}")
 
         except json.JSONDecodeError:
             pass

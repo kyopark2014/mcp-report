@@ -32,6 +32,8 @@ import json
 import traceback
 import asyncio
 import aws_cost.reflection_agent as reflection_agent
+import trans
+import utils
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -140,6 +142,34 @@ def revise_draft(draft, context):
     logger.info(f"result: {result.content}")
                             
     return result.content
+
+async def create_final_report(request_id, body, urls):
+    # report.html
+    output_html = trans.trans_md_to_html(body)
+    chat.create_object(f"artifacts/{request_id}_report.html", output_html)
+
+    logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
+    urls.append(f"{chat.path}/artifacts/{request_id}_report.html")
+
+    output = await utils.generate_pdf_report(body, request_id)
+    logger.info(f"result of generate_pdf_report: {output}")
+    if output: # reports/request_id.pdf         
+        pdf_filename = f"artifacts/{request_id}.pdf"
+        with open(pdf_filename, 'rb') as f:
+            pdf_bytes = f.read()
+            chat.upload_to_s3_artifacts(pdf_bytes, f"{request_id}.pdf")
+        logger.info(f"url of pdf: {chat.path}/artifacts/{request_id}.pdf")
+        urls.append(f"{chat.path}/artifacts/{request_id}.pdf")
+
+    logger.info(f"urls: {urls}")
+    
+    # report.md
+    key = f"artifacts/{request_id}_report.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)
+    
+    chat.updata_object(key, time + final_result, 'prepend')
+    return urls
     
 #########################################################
 # Cost Agent
@@ -556,7 +586,9 @@ def mcp_tools(state: CostState, config) -> dict:
         status_container.info(get_status_msg("mcp_tools"))
 
     global status_msg, response_msg 
-    reflection_result, image_url, status_msg, response_msg = asyncio.run(reflection_agent.run(draft, state["reflection"], status_container, response_container, key_container, status_msg, response_msg))
+    reflection_result, image_url, status_msg, response_msg = asyncio.run(
+        reflection_agent.run(draft, state["reflection"], status_container, response_container, key_container, status_msg, response_msg)
+    )
     logger.info(f"reflection result: {reflection_result}")
 
     value = ""
@@ -598,6 +630,7 @@ def should_end(state: CostState, config) -> str:
         if chat.debug_mode == "Enable":
             status_container.info(get_status_msg("end"))
         next = END
+
     else:
         logger.info(f"additional information is required!")
         next = "reflect_context"
@@ -619,8 +652,9 @@ agent = CostAgent(
 
 cost_agent = agent.compile()
 
-def run(request_id: str, status_container=None, response_container=None, key_container=None):
+def run(request_id: str, status_container=None, response_container=None, key_container=None, report_url=None):
     logger.info(f"request_id: {request_id}")
+    logger.info(f"report_url: {report_url}")
 
     global status_msg
     status_msg = []
@@ -670,5 +704,9 @@ def run(request_id: str, status_container=None, response_container=None, key_con
             #     response_container.write(value["final_response"])
     
     logger.info(f"value: {value}")
+       
+    urls = [report_url] if report_url else []
+    urls = asyncio.run(create_final_report(request_id, value["final_response"], urls))
+    logger.info(f"urls: {urls}")
 
-    return value["final_response"]
+    return value["final_response"], urls

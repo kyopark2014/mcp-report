@@ -1,0 +1,10 @@
+__pycache__
+
+# configuration
+config.json
+
+# report
+*.pdf
+*.html
+# css
+styles.css

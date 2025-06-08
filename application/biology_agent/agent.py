@@ -10,6 +10,7 @@ import json
 import re
 import random
 import string
+import trans
 
 from datetime import datetime
 from langchain_core.tools import tool
@@ -62,178 +63,6 @@ def get_prompt_template(prompt_name: str) -> str:
     template = open(os.path.join(os.path.dirname(__file__), f"{prompt_name}.md")).read()
     return template
 
-# async def run_agent(query, tools, system_prompt, status_container, response_container, key_container, historyMode):
-#     @tool
-#     async def planning_agent(query: str) -> str:
-#         """
-#         A specialized planning agent that analyzes the research query and determines 
-#         which tools and databases should be used for the investigation.
-        
-#         Args:
-#             query: The research question about drug discovery or target proteins
-            
-#         Returns:
-#             A structured plan outlining tools to use and search queries for each database
-#         """
-#         try:
-#             prompt_name = "planner"
-#             planning_system=get_prompt_template(prompt_name)
-#             logger.info(f"planning_system: {planning_system}")
-            
-#             planner_tool = []
-#             for tool in tools:
-#                 if tool.name == "planning_agent":
-#                     planner_tool.append(tool)
-#                     break
-#             # logger.info(f"planner_tool: {planner_tool}")
-
-#             result, image_url = await agent.run(
-#                 query, 
-#                 planner_tool, 
-#                 planning_system, 
-#                 status_container, 
-#                 response_container, 
-#                 key_container, 
-#                 historyMode
-#             )
-#             logger.info(f"result: {result}")
-            
-#             return result
-#         except Exception as e:
-#             logger.error(f"Error in planning agent: {e}")
-#             return f"Error in planning agent: {str(e)}"
-        
-#     @tool
-#     async def synthesis_agent(research_results: str) -> str:
-#         """
-#         Specialized agent for synthesizing research findings into a comprehensive report.
-        
-#         Args:
-#             research_results: Combined results from all research agents
-            
-#         Returns:
-#             A comprehensive, structured scientific report
-#         """
-#         try:
-#             # Create a synthesis agent
-#             system_prompt = """
-#             You are a specialized synthesis agent for drug discovery research. Your role is to:
-            
-#             1. Integrate findings from multiple research databases (Arxiv, PubMed, ChEMBL, ClinicalTrials)
-#             2. Create a comprehensive, coherent scientific report
-#             3. Highlight key insights, connections, and opportunities
-#             4. Organize information in a structured, accessible format
-#             5. Include proper citations and references
-            
-#             Your reports should follow this structure:
-#             1. Executive Summary (300 words)
-#             2. Target Overview (biological function, structure, disease mechanisms)
-#             3. Research Landscape (latest findings and research directions)
-#             4. Drug Development Status (known compounds, clinical trials)
-#             5. References (comprehensive listing of all sources)
-#             """
-            
-#             # Ask synthesis agent to create a report
-#             synthesis_prompt = f"""
-#             Create a comprehensive scientific report based on the following research findings:
-            
-#             {research_results}
-            
-#             Follow the required report structure:
-#             1. Executive Summary (300 words)
-#             2. Target Overview
-#             3. Research Landscape
-#             4. Drug Development Status
-#             5. References
-#             """
-
-#             response = await agent.run(synthesis_prompt, tools, system_prompt, status_container, response_container, key_container, historyMode)
-            
-#             return str(response)
-
-#         except Exception as e:
-#             logger.error(f"Error in synthesis agent: {e}")
-#             return f"Error in synthesis agent: {str(e)}"
-
-async def generate_pdf_report(report_content: str, filename: str) -> str:
-    """
-    Generates a PDF report from the research findings.
-    
-    Args:
-        report_content: The content to be converted into PDF format
-        filename: Base name for the generated PDF file
-        
-    Returns:
-        A message indicating the result of PDF generation
-    """
-    logger.info(f'###### generate_pdf_report ######')
-    
-    try:
-        # Ensure directory exists
-        os.makedirs("reports", exist_ok=True)
-        
-        # Set up the PDF file
-        filepath = f"reports/{filename}.pdf"
-        logger.info(f"filepath: {filepath}")
-
-        doc = SimpleDocTemplate(filepath, pagesize=letter)
-        
-        # Register TTF font directly (specify path to NanumGothic font file)
-        font_path = "assets/NanumGothic-Regular.ttf"  # Change to actual TTF file path
-        pdfmetrics.registerFont(TTFont('NanumGothic', font_path))
-        
-        # Create styles
-        styles = getSampleStyleSheet()
-        styles.add(ParagraphStyle(name='Normal_KO', 
-                                fontName='NanumGothic', 
-                                fontSize=10,
-                                spaceAfter=12))  # 문단 간격 증가
-        styles.add(ParagraphStyle(name='Heading1_KO', 
-                                fontName='NanumGothic', 
-                                fontSize=16,
-                                spaceAfter=20,  # 제목 후 여백 증가
-                                textColor=colors.HexColor('#0000FF')))  # 파란색
-        styles.add(ParagraphStyle(name='Heading2_KO', 
-                                fontName='NanumGothic', 
-                                fontSize=14,
-                                spaceAfter=16,  # 제목 후 여백 증가
-                                textColor=colors.HexColor('#0000FF')))  # 파란색
-        styles.add(ParagraphStyle(name='Heading3_KO', 
-                                fontName='NanumGothic', 
-                                fontSize=12,
-                                spaceAfter=14,  # 제목 후 여백 증가
-                                textColor=colors.HexColor('#0000FF')))  # 파란색
-        
-        # Process content
-        elements = []
-        lines = report_content.split('\n')
-        
-        for line in lines:
-            if line.startswith('# '):
-                elements.append(Paragraph(line[2:], styles['Heading1_KO']))
-            elif line.startswith('## '):
-                elements.append(Paragraph(line[3:], styles['Heading2_KO']))
-            elif line.startswith('### '):
-                elements.append(Paragraph(line[4:], styles['Heading3_KO']))
-            elif line.strip():  # Skip empty lines
-                elements.append(Paragraph(line, styles['Normal_KO']))
-        
-        # Build PDF
-        doc.build(elements)
-        
-        return f"PDF report generated successfully: {filepath}"
-    except Exception as e:
-        logger.error(f"Error generating PDF: {e}")
-        
-        # Fallback to text file
-        try:
-            text_filepath = f"reports/{filename}.txt"
-            with open(text_filepath, 'w', encoding='utf-8') as f:
-                f.write(report_content)
-            return f"PDF generation failed. Saved as text file instead: {text_filepath}"
-        except Exception as text_error:
-            return f"Error generating report: {str(e)}. Text fallback also failed: {str(text_error)}"
-
 def get_mcp_tools(tools):
     mcp_tools = []
     for tool in tools:
@@ -251,6 +80,7 @@ class State(TypedDict):
     appendix: list[str]
     final_response: str
     report: str
+    urls: list[str]
 
 async def Planner(state: State, config: dict) -> dict:
     logger.info(f"###### Planner ######")
@@ -468,6 +298,33 @@ async def Operator(state: State, config: dict) -> dict:
             "appendix": appendix
         }
 
+async def create_final_report(request_id, body, urls):
+    # report.html
+    output_html = trans.trans_md_to_html(body)
+    chat.create_object(f"artifacts/{request_id}_report.html", output_html)
+
+    logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
+    urls.append(f"{chat.path}/artifacts/{request_id}_report.html")
+
+    output = await utils.generate_pdf_report(body, request_id)
+    logger.info(f"result of generate_pdf_report: {output}")
+    if output: # reports/request_id.pdf         
+        pdf_filename = f"artifacts/{request_id}.pdf"
+        with open(pdf_filename, 'rb') as f:
+            pdf_bytes = f.read()
+            chat.upload_to_s3_artifacts(pdf_bytes, f"{request_id}.pdf")
+        logger.info(f"url of pdf: {chat.path}/artifacts/{request_id}.pdf")
+    
+    urls.append(f"{chat.path}/artifacts/{request_id}.pdf")
+
+    # report.md
+    key = f"artifacts/{request_id}_report.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)
+    
+    chat.create_object(key, time + final_result)
+    return urls
+
 async def Reporter(state: State, config: dict) -> dict:
     logger.info(f"###### Reporter ######")
 
@@ -516,22 +373,20 @@ async def Reporter(state: State, config: dict) -> dict:
     if chat.debug_mode == "Enable":
         response_container.info(result.content)
 
-    key = f"artifacts/{request_id}_report.md"
-    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-    
+    if chat.debug_mode == "Enable":
+        status_container.info(get_status_msg("end)"))
+
     appendix = state["appendix"] if "appendix" in state else []
     values = '\n\n'.join(appendix)
     logger.info(f"values: {values}")
 
-    chat.create_object(key, time + result.content + values)
-
-    if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg("end)"))
-
-    await generate_pdf_report(result.content + values, request_id)
-
+    urls = state["urls"] if "urls" in state else []
+    urls = await create_final_report(request_id, result.content+values, urls)
+    logger.info(f"urls: {urls}")
+        
     return {
-        "report": result.content
+        "report": result.content,
+        "urls": urls
     }
                 
 def buildBioAgent():
@@ -566,7 +421,7 @@ def get_tool_info(tools, st):
     toolmsg = ', '.join(toolList)
     st.info(f"Tools: {toolmsg}")
 
-async def run(question: str, tools: list[BaseTool], status_container, response_container, key_container, request_id):
+async def run(question: str, tools: list[BaseTool], status_container, response_container, key_container, request_id, report_url):
     logger.info(f"request_id: {request_id}")
 
     if chat.debug_mode == "Enable":
@@ -574,7 +429,8 @@ async def run(question: str, tools: list[BaseTool], status_container, response_c
         
     inputs = {
         "messages": [HumanMessage(content=question)],
-        "final_response": ""
+        "final_response": "",
+        "urls": [report_url]
     }
     config = {
         "request_id": request_id,
@@ -610,9 +466,9 @@ async def run(question: str, tools: list[BaseTool], status_container, response_c
     logger.info(f"value: {value}")
 
     if "report" in value:
-        return value["report"]
+        return value["report"], value["urls"]
     else:
-        return value["final_response"]
+        return value["final_response"], value["urls"]
 
 async def run_biology_agent(query, st):
     logger.info(f"###### run_biology_agent ######")
@@ -650,22 +506,16 @@ async def run_biology_agent(query, st):
             key_container = st.empty()
             response_container = st.empty()
                                             
-            response = await run(query, tools, status_container, response_container, key_container, request_id)
+            response, urls = await run(query, tools, status_container, response_container, key_container, request_id, report_url)
             logger.info(f"response: {response}")
+            logger.info(f"urls: {urls}")
 
         if response_msg:
             with st.expander(f"수행 결과"):
                 response_msgs = '\n\n'.join(response_msg)
                 st.markdown(response_msgs)
 
-        st.markdown(response)
-
         image_url = []
-        st.session_state.messages.append({
-            "role": "assistant", 
-            "content": response,
-            "images": image_url if image_url else []
-        })
     
-    return response, image_url
+    return response, image_url, urls
 

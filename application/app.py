@@ -412,8 +412,9 @@ if clear_button==False and mode == '비용 분석 Agent':
     # show status and response
     status_container = st.empty()
     response_container = st.empty()
-    
-    response = aws_cost.run(request_id, status_container, response_container)
+    key_container = st.empty()
+
+    response, urls = aws_cost.run(request_id, status_container, response_container, key_container, report_url)
     logger.info(f"response: {response}")
 
     if aws_cost.response_msg:
@@ -422,6 +423,11 @@ if clear_button==False and mode == '비용 분석 Agent':
             st.markdown(response_msgs)
 
     st.write(response)
+
+    if urls:
+        with st.expander(f"최종 결과"):
+            url_msg = '\n\n'.join(urls)
+            st.markdown(url_msg)
 
     st.session_state.messages.append({"role": "assistant", "content": response})
 
@@ -494,12 +500,13 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             sessionState = ""
             chat.references = []
             chat.image_url = []
-            response, image_url = asyncio.run(bio_agent.run_biology_agent(prompt, st))
+            response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 
                 "content": response,
-                "images": image_url if image_url else []
+                "images": image_url if image_url else [],
+                "urls": urls if urls else []
             })
 
             st.write(response)
@@ -507,3 +514,8 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
                 logger.info(f"url: {url}")
                 file_name = url[url.rfind('/')+1:]
                 st.image(url, caption=file_name, use_container_width=True)           
+
+            if urls:
+                with st.expander(f"최종 결과"):
+                    url_msg = '\n\n'.join(urls)
+                    st.markdown(url_msg)
