@@ -143,9 +143,9 @@ def revise_draft(draft, context):
                             
     return result.content
 
-async def create_final_report(request_id, body, urls):
+async def create_final_report(request_id, question, body, urls):
     # report.html
-    output_html = trans.trans_md_to_html(body)
+    output_html = trans.trans_md_to_html(body, question)
     chat.create_object(f"artifacts/{request_id}_report.html", output_html)
 
     logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
@@ -706,7 +706,7 @@ def run(request_id: str, status_container=None, response_container=None, key_con
     logger.info(f"value: {value}")
        
     urls = [report_url] if report_url else []
-    urls = asyncio.run(create_final_report(request_id, value["final_response"], urls))
+    urls = asyncio.run(create_final_report(request_id, "AWS 비용 분석", value["final_response"], urls))
     logger.info(f"urls: {urls}")
 
     return value["final_response"], urls

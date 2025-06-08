@@ -298,9 +298,9 @@ async def Operator(state: State, config: dict) -> dict:
             "appendix": appendix
         }
 
-async def create_final_report(request_id, body, urls):
+async def create_final_report(request_id, question, body, urls):
     # report.html
-    output_html = trans.trans_md_to_html(body)
+    output_html = trans.trans_md_to_html(body, question)
     chat.create_object(f"artifacts/{request_id}_report.html", output_html)
 
     logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
@@ -380,8 +380,9 @@ async def Reporter(state: State, config: dict) -> dict:
     values = '\n\n'.join(appendix)
     logger.info(f"values: {values}")
 
+    question = state["messages"][0].content
     urls = state["urls"] if "urls" in state else []
-    urls = await create_final_report(request_id, result.content+values, urls)
+    urls = await create_final_report(request_id, question, result.content+values, urls)
     logger.info(f"urls: {urls}")
         
     return {

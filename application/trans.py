@@ -1,7 +1,7 @@
 import os
 from datetime import datetime
 
-def trans_md_to_html(md_content):
+def trans_md_to_html(md_content, question):
     # Read styles.css content
     with open('application/styles.css', 'r', encoding='utf-8') as f:
         css_content = f.read()
@@ -9,7 +9,7 @@ def trans_md_to_html(md_content):
     lines = md_content.split('\n')
     
     # Get main title from first # heading
-    title = ""
+    title = question
     for line in lines:
         if line.startswith('# '):
             title = line[2:]
@@ -20,16 +20,6 @@ def trans_md_to_html(md_content):
     for line in lines:
         if line.startswith('## '):
             subtitles.append(line[3:])
-
-        # elif line.startswith('### '):
-        #     html += f'<h3>{line[4:]}</h3>\n'
-        # elif line.startswith('#### '):
-        #     html += f'<h4>{line[5:]}</h4>\n'
-        # elif line.startswith('##### '):
-        #     html += f'<h5>{line[6:]}</h5>\n'
-        # elif line.startswith('###### '):
-        #     html += f'<h6>{line[7:]}</h6>\n'
-    
 
     # Create HTML template
     html_template = f"""<!DOCTYPE html>
@@ -292,6 +282,20 @@ def process_subsection(title, content):
             else:
                 break
         return processed_text
+
+    def process_image(text):
+        """Convert ![alt](url) to <img> tag"""
+        if '![' in text and '](' in text:
+            alt_start = text.find('![') + 2
+            alt_end = text.find(']', alt_start)
+            url_start = text.find('(', alt_end) + 1
+            url_end = text.find(')', url_start)
+            
+            if alt_end != -1 and url_end != -1:
+                alt_text = text[alt_start:alt_end]
+                url = text[url_start:url_end]
+                return f'<img src="{url}" alt="{alt_text}" class="markdown-image">'
+        return text
     
     html += f'<div class="body">\n'
     html += f'<h3>{process_bold_text(title)}</h3>\n'
