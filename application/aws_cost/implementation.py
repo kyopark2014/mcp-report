@@ -276,8 +276,8 @@ def service_cost(state: CostState, config) -> dict:
 
     if response_container:
         value = summary
-        response_container.info('[response]\n' + value[:200])
-        response_msg.append(value[:200])
+        response_container.info('[response]\n' + value)
+        response_msg.append(value)
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
