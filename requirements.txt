@@ -29,3 +29,4 @@ wikipedia
 sarif-om==1.0.4
 graphviz
 arxiv==2.2.0
+reportlab==4.4.1

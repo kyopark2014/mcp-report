@@ -1766,7 +1766,7 @@ async def run_agent(query, historyMode, st):
             key_container = st.empty()
             response_container = st.empty()
                         
-            result, image_url = await agent.run(query, tools, None, status_container, response_container, key_container, historyMode)            
+            result, image_url = await agent.run(query, tools, status_container, response_container, key_container, historyMode)    
 
         if agent.response_msg:
             with st.expander(f"수행 결과"):
