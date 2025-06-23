@@ -634,7 +634,7 @@ export class CdkMcpReportStack extends cdk.Stack {
       environment: {
         bedrock_region: String(region),  
         projectName: projectName,
-        "sharing_url": 'https://'+distribution_sharing.domainName,
+        "sharing_url": 'https://'+distribution.domainName,
       }
     });
     lambdaKnowledgeBase.grantInvoke(new cdk.aws_iam.ServicePrincipal("bedrock.amazonaws.com"));   
