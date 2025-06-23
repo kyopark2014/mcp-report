@@ -26,7 +26,7 @@ def get_status_msg(status):
     global status_msg
     status_msg.append(status)
 
-    if status != "end":
+    if status != "end)":
         status = " -> ".join(status_msg)
         return "[status]\n" + status + "..."
     else: 
@@ -147,16 +147,19 @@ async def should_continue(state: State, config) -> Literal["continue", "end"]:
 
         logger.info(f"tool_name: {tool_name}, tool_args: {tool_args}")
         if chat.debug_mode == "Enable":
+            key_container.info(f"{tool_name}: {tool_args}")
+        
+        if chat.debug_mode == "Enable":
             status_container.info(get_status_msg(f"{tool_name}"))
             if "code" in tool_args:
                 logger.info(f"code: {tool_args['code']}")
-                key_container.code(tool_args['code'])
+                response_container.code(tool_args['code'])
                 response_msg.append(f"{tool_args['code']}")
 
         return "continue"
     else:
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg("end"))
+            status_container.info(get_status_msg("end)"))
 
         logger.info(f"--- END ---")
         return "end"
@@ -293,7 +296,7 @@ def extract_reference(response):
                                         "url": item['url'],
                                         "title": item['title'],
                                         "content": item['context'][:100].replace("\n", "")
-                                    })
+                                  })
                             except json.JSONDecodeError:
                                 logger.info(f"JSON parsing error: {item}")
                                 continue
@@ -309,7 +312,7 @@ async def run(question, tools, status_container, response_container, key_contain
     response_msg = []
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg("start"))
+        status_container.info(get_status_msg("(start"))
 
     if historyMode == "Enable":
         app = buildChatAgentWithHistory(tools)
@@ -330,24 +333,37 @@ async def run(question, tools, status_container, response_container, key_contain
             "key_container": key_container,
             "tools": tools
         }
-
-    value = None
+    
     inputs = {
         "messages": [HumanMessage(content=question)]
     }
 
+    value = result = None
     references = []
     async for output in app.astream(inputs, config):
         for key, value in output.items():
             logger.info(f"--> key: {key}, value: {value}")
 
-            refs = extract_reference(value["messages"])
-            if refs:
-                for r in refs:
-                    references.append(r)
-                    logger.info(f"r: {r}")
+            if key == "messages":
+                if isinstance(value, dict) and "messages" in value:
+                    message = value["messages"]
+                elif isinstance(value, list):
+                    value = {"messages": value, "image_url": []}
+                    message = value["messages"]
+                else:
+                    value = {"messages": [value], "image_url": []}
+                    message = value["messages"]
+
+                refs = extract_reference(message)
+                if refs:
+                    for r in refs:
+                        references.append(r)
+                        logger.info(f"r: {r}")
                 
-    result = value["messages"][-1].content
+    if value and "messages" in value and len(value["messages"]) > 0:
+        result = value["messages"][-1].content
+    else:
+        result = "답변을 찾지 못하였습니다."
 
     logger.info(f"references: {references}")
     if references:
@@ -356,11 +372,11 @@ async def run(question, tools, status_container, response_container, key_contain
             ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
         result += ref
 
-    image_url = value["image_url"] if "image_url" in value else []
+    image_url = value["image_url"] if value and "image_url" in value else []
 
     return result, image_url
 
-async def run_manus(question, tools, system_prompt, status_container, response_container, key_container, historyMode, previous_status_msg, previous_response_msg):
+async def run_task(question, tools, system_prompt, status_container, response_container, key_container, historyMode, previous_status_msg, previous_response_msg):
     global status_msg, response_msg
     status_msg = previous_status_msg
     response_msg = previous_response_msg
@@ -400,24 +416,28 @@ async def run_manus(question, tools, system_prompt, status_container, response_c
     async for output in app.astream(inputs, config):
         for key, value in output.items():
             logger.info(f"--> key: {key}, value: {value}")
-            final_output = output
-            logger.info(f"final_output: {final_output}")
+            
+            if key == "messages":
+                if isinstance(value, dict) and "messages" in value:
+                    message = value["messages"]
+                elif isinstance(value, list):
+                    value = {"messages": value, "image_url": []}
+                    message = value["messages"]
+                else:
+                    value = {"messages": [value], "image_url": []}
+                    message = value["messages"]
 
-            # refs = extract_reference(value["messages"])
-            # if refs:
-            #     for r in refs:
-            #         references.append(r)
-            #         logger.info(f"r: {r}")
+                refs = extract_reference(message)
+                if refs:
+                    for r in refs:
+                        references.append(r)
+                        logger.info(f"r: {r}")
                 
-    result = final_output["messages"][-1].content
+    if value and "messages" in value and len(value["messages"]) > 0:
+        result = value["messages"][-1].content
+    else:
+        result = "답변을 찾지 못하였습니다."
 
-    # logger.info(f"references: {references}")
-    # if references:
-    #     ref = "\n\n### Reference\n"
-    #     for i, reference in enumerate(references):
-    #         ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
-    #     result += ref
-
-    image_url = final_output["image_url"] if "image_url" in value else []
+    image_url = final_output["image_url"] if final_output and "image_url" in final_output else []
 
     return result, image_url, status_msg, response_msg

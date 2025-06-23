@@ -12,7 +12,8 @@ import string
 import os
 import pwd
 import asyncio
-import biology_agent.agent as bio_agent
+import biology_agent.biology as bio_agent
+import planning_agent.planning as planning
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -106,6 +107,9 @@ mode_descriptions = {
     "Biology Agent": [
         "Biology Agent를 이용합니다. 왼쪽 메뉴에서 필요한 MCP를 선택하세요."
     ],
+    "Planning Agent": [
+        "Planning agent를 이용하여 복잡한 문제를 해결합니다."
+    ],
     "비용 분석 Agent": [
         "Cloud 사용에 대한 분석을 수행합니다."
     ]
@@ -153,13 +157,13 @@ with st.sidebar:
     
     # radio selection
     mode = st.radio(
-        label="원하는 대화 형태를 선택하세요. ",options=["일상적인 대화", "RAG", "Agent", "Agent (Chat)", "Biology Agent", "비용 분석 Agent"], index=2
+        label="원하는 대화 형태를 선택하세요. ",options=["일상적인 대화", "RAG", "Agent", "Agent (Chat)", "Biology Agent", "비용 분석 Agent", "Planning Agent"], index=2
     )   
     st.info(mode_descriptions[mode][0])
     
     # mcp selection
     mcp = ""
-    if mode=='Agent' or mode=='Agent (Chat)' or mode=='Biology Agent' or mode=='비용 분석 Agent':
+    if mode=='Agent' or mode=='Agent (Chat)' or mode=='Biology Agent' or mode=='Planning Agent' or mode=='비용 분석 Agent':
         # MCP Config JSON input
         st.subheader("⚙️ MCP Config")
 
@@ -438,6 +442,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
 
     st.session_state.messages.append({"role": "user", "content": prompt})  # add user message to chat history
     prompt = prompt.replace('"', "").replace("'", "")
+    logger.info(f"prompt: {prompt}")
 
     with st.chat_message("assistant"):
         if mode == '일상적인 대화':
@@ -501,6 +506,30 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             chat.references = []
             chat.image_url = []
             response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, st))
+
+            st.session_state.messages.append({
+                "role": "assistant", 
+                "content": response,
+                "images": image_url if image_url else [],
+                "urls": urls if urls else []
+            })
+
+            st.write(response)
+            for url in image_url:
+                logger.info(f"url: {url}")
+                file_name = url[url.rfind('/')+1:]
+                st.image(url, caption=file_name, use_container_width=True)           
+
+            if urls:
+                with st.expander(f"최종 결과"):
+                    url_msg = '\n\n'.join(urls)
+                    st.markdown(url_msg)
+
+        elif mode == 'Planning Agent':
+            sessionState = ""
+            chat.references = []
+            chat.image_url = []
+            response, image_url, urls = asyncio.run(planning.run_planning_agent(prompt, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 

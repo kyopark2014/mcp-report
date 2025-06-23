@@ -194,60 +194,6 @@ export class CdkMcpReportStack extends cdk.Stack {
     });
     OpenSearchCollection.addDependency(dataAccessPolicy);
 
-    // agent role
-    const agent_role = new iam.Role(this,  `role-agent-for-${projectName}`, {
-      roleName: `role-agent-for-${projectName}-${region}`,
-      assumedBy: new iam.CompositePrincipal(
-        new iam.ServicePrincipal("bedrock.amazonaws.com")
-      )
-    });
-
-    const bedrockRetrievePolicy = new iam.PolicyStatement({ 
-      effect: iam.Effect.ALLOW,
-      resources: [
-        `arn:aws:bedrock:${region}:${accountId}:knowledge-base/*`
-      ],
-      actions: [
-        "bedrock:Retrieve"
-      ],
-    });        
-    agent_role.attachInlinePolicy( 
-      new iam.Policy(this, `bedrock-retrieve-policy-for-${projectName}`, {
-        statements: [bedrockRetrievePolicy],
-      }),
-    );  
-    
-    const agentInferencePolicy = new iam.PolicyStatement({ 
-      effect: iam.Effect.ALLOW,
-      resources: [
-        `arn:aws:bedrock:${region}:${accountId}:inference-profile/*`,
-        `arn:aws:bedrock:*::foundation-model/*`
-      ],
-      actions: [
-        "bedrock:InvokeModel",
-        "bedrock:InvokeModelWithResponseStream",
-        "bedrock:GetInferenceProfile",
-        "bedrock:GetFoundationModel"
-      ],
-    });        
-    agent_role.attachInlinePolicy( 
-      new iam.Policy(this, `agent-inference-policy-for-${projectName}`, {
-        statements: [agentInferencePolicy],
-      }),
-    );  
-
-    // Lambda Invoke
-    agent_role.addToPolicy(new iam.PolicyStatement({
-      resources: ['*'],
-      actions: [
-        'lambda:InvokeFunction',
-        'cloudwatch:*'
-      ]
-    }));
-    agent_role.addManagedPolicy({
-      managedPolicyArn: 'arn:aws:iam::aws:policy/AWSLambdaExecute',
-    });
-
     // EC2 Role
     const ec2Role = new iam.Role(this, `role-ec2-for-${projectName}`, {
       roleName: `role-ec2-for-${projectName}-${region}`,
@@ -283,11 +229,6 @@ export class CdkMcpReportStack extends cdk.Stack {
       resources: ['*'],
       actions: ['bedrock:*'],
     });     
-    agent_role.attachInlinePolicy( // add bedrock policy
-      new iam.Policy(this, `bedrock-policy-agent-for-${projectName}`, {
-        statements: [BedrockPolicy],
-      }),
-    );   
     ec2Role.attachInlinePolicy( // add bedrock policy
       new iam.Policy(this, `bedrock-policy-ec2-for-${projectName}`, {
         statements: [BedrockPolicy],
@@ -629,11 +570,8 @@ export class CdkMcpReportStack extends cdk.Stack {
         new iam.ServicePrincipal("lambda.amazonaws.com"),
         new iam.ServicePrincipal("bedrock.amazonaws.com"),
       ),
-      // managedPolicies: [cdk.aws_iam.ManagedPolicy.fromAwsManagedPolicyName('CloudWatchLogsFullAccess')] 
     });
-    // roleLambdaRag.addManagedPolicy({  // grant log permission
-    //   managedPolicyArn: 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole',
-    // });
+
     const CreateLogPolicy = new iam.PolicyStatement({  
       resources: [`arn:aws:logs:${region}:${accountId}:*`],
       actions: ['logs:CreateLogGroup'],

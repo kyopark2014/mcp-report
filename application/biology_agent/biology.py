@@ -5,6 +5,7 @@ import chat
 import os
 import traceback
 import datetime
+import biology_agent.biology as biology
 import agent
 import json
 import re
@@ -114,8 +115,8 @@ async def Planner(state: State, config: dict) -> dict:
         ]
     )
 
-    prompt = planner_prompt | llm 
-    result = prompt.invoke({
+    chain = planner_prompt | llm 
+    result = chain.invoke({
         "mcp_tools": mcp_tools,
         "input": state
     })
@@ -256,7 +257,7 @@ async def Operator(state: State, config: dict) -> dict:
                 
         global status_msg, response_msg
 
-        result, image_url, status_msg, response_msg = await agent.run_manus(
+        result, image_url, status_msg, response_msg = await agent.run_task(
             question = task, 
             tools = tool_info, 
             system_prompt = None, 

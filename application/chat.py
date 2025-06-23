@@ -1575,7 +1575,7 @@ def retrieve_knowledge_base(query):
         region_name=bedrock_region
     )
 
-    functionName = f"lambda-rag-for-{projectName}"
+    functionName = f"knowledge-base-for-{projectName}"
     logger.info(f"functionName: {functionName}")
 
     try:
@@ -1740,14 +1740,13 @@ def load_multiple_mcp_server_parameters():
 def tool_info(tools, st):
     tool_info = ""
     tool_list = []
-    st.info("Tool 정보를 가져옵니다.")
     for tool in tools:
         tool_info += f"name: {tool.name}\n"    
         if hasattr(tool, 'description'):
             tool_info += f"description: {tool.description}\n"
         tool_info += f"args_schema: {tool.args_schema}\n\n"
         tool_list.append(tool.name)
-    # st.info(f"{tool_info}")
+    logger.info(f"Tools: {tool_list}")
     st.info(f"Tools: {tool_list}")
 
 async def run_agent(query, historyMode, st):
@@ -1760,7 +1759,7 @@ async def run_agent(query, historyMode, st):
 
             if debug_mode == "Enable":
                 tool_info(tools, st)
-                logger.info(f"tools: {tools}")
+                # logger.info(f"tools: {tools}")
 
             status_container = st.empty()            
             key_container = st.empty()
