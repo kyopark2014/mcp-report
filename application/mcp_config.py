@@ -24,6 +24,19 @@ def load_config(mcp_type):
                 }
             }
         }
+    
+    elif mcp_type == "knowledge_base_lambda":
+        return {
+            "mcpServers": {
+                "knowledge_base_lambda": {
+                    "command": "python",
+                    "args": [
+                        "application/mcp_server_lambda_knowledge_base.py"
+                    ]
+                }
+            }
+        }    
+    
     elif mcp_type == "image_generation":
         return {
             "mcpServers": {
@@ -169,18 +182,6 @@ def load_config(mcp_type):
                 }
             }
         }
-    
-    elif mcp_type == "aws_rag":
-        return {
-            "mcpServers": {
-                "aws_storage": {
-                    "command": "python",
-                    "args": [
-                        "application/mcp_server_rag.py"
-                    ]
-                }
-            }
-        }    
     
     elif mcp_type == "code_interpreter":
         return {
@@ -402,7 +403,7 @@ def load_selected_config(mcp_selections: dict[str, bool]):
         elif server == "aws storage":
             config = load_config('aws_storage')
         elif server == "knowledge base":
-            config = load_config('aws_rag')
+            config = load_config('knowledge_base_lambda')
         elif server == "code interpreter":
             config = load_config('code_interpreter')
         elif server == "aws cli":

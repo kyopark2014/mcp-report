@@ -49,6 +49,16 @@ def get_status_msg(status):
 
 response_msg = []
 
+def get_mcp_tools(tools):
+    mcp_tools = []
+    for tool in tools:
+        name = tool.name
+        description = tool.description
+        description = description.replace("\n", "")
+        mcp_tools.append(f"{name}: {description}")
+        # logger.info(f"mcp_tools: {mcp_tools}")
+    return mcp_tools
+
 ####################### LangGraph #######################
 # Planning Agent
 #########################################################
@@ -66,12 +76,12 @@ async def plan_node(state: State, config):
 
     plan_container = config.get("configurable", {}).get("plan_container", None)
     status_container = config.get("configurable", {}).get("status_container", None)
+    key_container = config.get("configurable", {}).get("key_container", None)
     response_container = config.get("configurable", {}).get("response_container", None)    
 
-    status_container.info(get_status_msg(f"plan"))
-
-    if chat.debug_mode=="Enable":
-        status_container.info(f"계획을 생성합니다. 요청사항: {state['input']}")
+    if chat.debug_mode == "Enable":
+        status_container.info(get_status_msg(f"plan"))
+        key_container.info(f"계획을 생성합니다.")
     
     system = (
         "당신은 user의 question을 해결하기 위해 step by step plan을 생성하는 AI agent입니다."  
@@ -108,29 +118,17 @@ async def plan_node(state: State, config):
     plan = output.strip().replace('\n\n', '\n')
     planning_steps = plan.split('\n')
     logger.info(f"planning_steps: {planning_steps}")
-    plan_container.info(f"Plan: {planning_steps}")
 
     if chat.debug_mode=="Enable":
-        response_container.info(f"생성된 계획: {planning_steps}")
+        plan_container.info(f"Plan: {planning_steps}")
     
     return {
         "input": state["input"],
         "plan": planning_steps
     }
 
-def get_mcp_tools(tools):
-    mcp_tools = []
-    for tool in tools:
-        name = tool.name
-        description = tool.description
-        description = description.replace("\n", "")
-        mcp_tools.append(f"{name}: {description}")
-        # logger.info(f"mcp_tools: {mcp_tools}")
-    return mcp_tools
-
 async def execute_node(state: State, config):
     logger.info(f"###### execute ######")
-    logger.info(f"input: {state['input']}")
     plan = state["plan"]
     logger.info(f"plan: {plan}")
     
@@ -139,12 +137,11 @@ async def execute_node(state: State, config):
     key_container = config.get("configurable", {}).get("key_container", None)
     tools = config.get("configurable", {}).get("tools", None)
 
-    status_container.info(get_status_msg(f"execute"))    
-
     task = plan[0]
     logger.info(f"task: {task}")
     if chat.debug_mode == "Enable":
-        key_container.info(f"계획을 수행합니다. 현재 계획 {task}")
+        status_container.info(get_status_msg(f"execute"))    
+        key_container.info(f"현재 계획: {task}")
 
     global status_msg, response_msg
     result, image_url, status_msg, response_msg = await agent.run_task(
@@ -165,8 +162,6 @@ async def execute_node(state: State, config):
     if chat.debug_mode=="Enable":
         response_container.info(subresult)
     
-    # print('plan: ', state["plan"])
-    # print('past_steps: ', task)        
     return {
         "input": state["input"],
         "plan": state["plan"],
@@ -187,9 +182,8 @@ async def replan_node(state: State, config):
     plan_container = config.get("configurable", {}).get("plan_container", None)
     key_container = config.get("configurable", {}).get("key_container", None)
     
-    status_container.info(get_status_msg(f"replan"))
-
     if chat.debug_mode=="Enable":
+        status_container.info(get_status_msg(f"replan"))
         key_container.info(f"새로운 계획을 생성합니다.")
     
     system = (
@@ -280,9 +274,8 @@ async def final_answer(state: State, config) -> str:
     response_container = config.get("configurable", {}).get("response_container", None)
     key_container = config.get("configurable", {}).get("key_container", None)
 
-    status_container.info(get_status_msg(f"final_answer"))
-
     if chat.debug_mode=="Enable":
+        status_container.info(get_status_msg(f"final_answer"))
         key_container.info(f"최종 답변을 생성합니다.")
     
     if chat.isKorean(query)==True:
@@ -332,7 +325,7 @@ async def final_answer(state: State, config) -> str:
         logger.info(f"output: {output}")
 
         if chat.debug_mode=="Enable":
-            response_container.info(f"output: {output}")
+            response_container.info(f"최종결과: {output}")
 
         return {"answer": output}
         
@@ -342,7 +335,6 @@ async def final_answer(state: State, config) -> str:
         
         return {"answer": err_msg}
       
-
 def buildPlanAndExecute():
     workflow = StateGraph(State)
     workflow.add_node("planner", plan_node)
@@ -377,37 +369,19 @@ def get_tool_info(tools, st):
     toolmsg = ', '.join(toolList)
     st.info(f"Tools: {toolmsg}")
 
-async def run(question: str, tools: list[BaseTool], plan_container, status_container, response_container, key_container, request_id, report_url):
-    logger.info(f"request_id: {request_id}")
+def initiate_report(st):
+    # request id
+    request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
+    template = template.replace("{request_id}", request_id)
+    template = template.replace("{sharing_url}", chat.path)
+    key = f"artifacts/{request_id}.html"
+    chat.create_object(key, template)
 
-    if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg("start"))
-        
-    # inputs = {
-    #     # "messages": [HumanMessage(content=question)],
-    #     "input": question,
-    #     "final_response": "",
-    #     "urls": [report_url]
-    # }
-    inputs = {
-        # "messages": [HumanMessage(content=question)],
-        "input": question
-    }
-    config = {
-        "request_id": request_id,
-        "recursion_limit": 50,
-        "plan_container": plan_container,
-        "status_container": status_container,
-        "response_container": response_container,
-        "key_container": key_container,
-        "tools": tools
-    }
+    report_url = chat.path + "/artifacts/" + request_id + ".html"
+    logger.info(f"report_url: {report_url}")
+    st.info(f"report_url: {report_url}")
 
-    # initiate
-    global contentList, reference_docs
-    contentList = []
-    reference_docs = []
-    
     # draw a graph
     graph_diagram = planning_app.get_graph().draw_mermaid_png(
         draw_method=MermaidDrawMethod.API,
@@ -425,26 +399,7 @@ async def run(question: str, tools: list[BaseTool], plan_container, status_conta
     body = f"## {task}\n\n{output_images}"
     chat.updata_object(key, body, 'prepend')
 
-    # for output in planning_app.stream(inputs, config):   
-    #     for key, value in output.items():
-    #         logger.info(f"Finished: {key}")
-    #         #print("value: ", value)            
-    # logger.info(f"value: {value}")
-
-    # reference = ""
-    # if reference_docs:
-    #     reference = chat.get_references(reference_docs)
-
-    # return value["answer"]+reference, reference_docs
-
-    value = None
-    async for output in planning_app.astream(inputs, config):
-        for key, value in output.items():
-            logger.info(f"Finished running: {key}")
-    
-    logger.info(f"value: {value}")
-
-    return value["answer"]
+    return request_id, report_url
     
 async def run_planning_agent(query, st):
     logger.info(f"###### run_planning_agent ######")
@@ -461,32 +416,45 @@ async def run_planning_agent(query, st):
         response = ""
         with st.status("thinking...", expanded=True, state="running") as status:            
             tools = client.get_tools()
+            logger.info(f"tools: {tools}")
 
             if chat.debug_mode == "Enable":
                 get_tool_info(tools, st)
-                logger.info(f"tools: {tools}")
-
-            # request id
-            request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-            template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
-            template = template.replace("{request_id}", request_id)
-            template = template.replace("{sharing_url}", chat.path)
-            key = f"artifacts/{request_id}.html"
-            chat.create_object(key, template)
-
-            report_url = chat.path + "/artifacts/" + request_id + ".html"
-            logger.info(f"report_url: {report_url}")
-            st.info(f"report_url: {report_url}")
 
             status_container = st.empty()      
             plan_container = st.empty()
             key_container = st.empty()
             response_container = st.empty()
+
+            if chat.debug_mode == "Enable":
+                status_container.info(get_status_msg("start"))                
+            
+            request_id, report_url = initiate_report(st)
                                             
-            # to do: urls
-            urls = []
-            response = await run(query, tools, plan_container, status_container, response_container, key_container, request_id, report_url)
+            inputs = {
+                "input": query
+            }
+            config = {
+                "request_id": request_id,
+                "recursion_limit": 50,
+                "plan_container": plan_container,
+                "status_container": status_container,
+                "response_container": response_container,
+                "key_container": key_container,
+                "tools": tools
+            }    
+
+            value = None
+            async for output in planning_app.astream(inputs, config):
+                for key, value in output.items():
+                    logger.info(f"Finished running: {key}")
+            
+            logger.info(f"value: {value}")
+            response = value["answer"]
             logger.info(f"response: {response}")
+
+            urls = []
+            urls.append(report_url)
             logger.info(f"urls: {urls}")
 
         if response_msg:
