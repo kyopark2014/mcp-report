@@ -24,6 +24,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("agent")
 
+index = 0
+def add_notification(container, message):
+    global index
+    container["notification"][index].info(message)
+    index += 1
+
 status_msg = []
 def get_status_msg(status):
     global status_msg
@@ -50,8 +56,7 @@ async def call_model(state: State, config):
     
     image_url = state['image_url'] if 'image_url' in state else []
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     tools = config.get("configurable", {}).get("tools", None)
     
     if isinstance(last_message, ToolMessage):
@@ -72,21 +77,22 @@ async def call_model(state: State, config):
 
                 logger.info(f"image_url: {image_url}")
                 if chat.debug_mode == "Enable":
-                    response_container.info(f"Added path to image_url: {json_data['path']}")
+                    add_notification(containers, f"Added path to image_url: {json_data['path']}")
                     response_msg.append(f"Added path to image_url: {json_data['path']}")
 
         except json.JSONDecodeError:
             pass
 
+        response_msg.append(f"{tool_name}: {tool_content}")
         if chat.debug_mode == "Enable":
-            response_container.info(f"{tool_name}: {tool_content[:800]}")
-            response_msg.append(f"{tool_name}: {tool_content[:800]}")
+            add_notification(containers, f"{tool_name}: {tool_content}")
+            
 
     if isinstance(last_message, AIMessage) and last_message.content:
+        response_msg.append(last_message.content)    
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg(f"{last_message.name}"))
-            response_container.info(f"{last_message.content[:800]}")
-            response_msg.append(last_message.content[:800])    
+            containers["status"].info(get_status_msg(f"{last_message.name}"))
+            add_notification(containers, f"{last_message.content}")            
         
     system = (
         "당신은 보고서를 잘 작성하는 논리적이고 똑똑한 AI입니다."
@@ -122,9 +128,7 @@ async def should_continue(state: State, config) -> Literal["continue", "end"]:
     messages = state["messages"]    
     last_message = messages[-1]
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     
     if isinstance(last_message, AIMessage) and last_message.tool_calls:
         tool_name = last_message.tool_calls[-1]['name']
@@ -134,22 +138,23 @@ async def should_continue(state: State, config) -> Literal["continue", "end"]:
 
         if last_message.content:
             logger.info(f"last_message: {last_message.content}")
+            response_msg.append(last_message.content)
             if chat.debug_mode == "Enable":
-                response_container.info(f"{last_message.content}")
-                response_msg.append(last_message.content)
+                add_notification(containers, f"{last_message.content}")                
 
         logger.info(f"tool_name: {tool_name}, tool_args: {tool_args}")
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg(f"{tool_name}"))
+            containers["status"].info(get_status_msg(f"{tool_name}"))
             if "code" in tool_args:
                 logger.info(f"code: {tool_args['code']}")
-                key_container.code(tool_args['code'])
                 response_msg.append(f"{tool_args['code']}")
+                if chat.debug_mode == "Enable":
+                    add_notification(containers, f"{tool_args['code']}")
 
         return "continue"
     else:
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg("end)"))
+            containers["status"].info(get_status_msg("end)"))
 
         logger.info(f"--- END ---")
         return "end"
@@ -273,7 +278,7 @@ def extract_reference(response):
                 pass
     return references
 
-async def run(draft, reflection, status_container, response_container, key_container, previous_status_msg, previous_response_msg):
+async def run(draft, reflection, containers, previous_status_msg, previous_response_msg):
     global status_msg, response_msg
     status_msg = previous_status_msg
     response_msg = previous_response_msg
@@ -292,23 +297,23 @@ async def run(draft, reflection, status_container, response_container, key_conta
                 tool_info.append(f"{tool.name}: {tool.description[:100]}")
             tool_summary = "\n".join(tool_info)
 
-            response_container.info(f"{tool_summary}")
-            response_msg.append(f"{tool_summary}")
+            add_notification(containers, f"{tool_summary}")
 
         instruction = (
             f"<reflection>{reflection}</reflection>\n\n"
             f"<draft>{draft}</draft>"
         )
+        
+        global index
+        index = 0
 
         if chat.debug_mode == "Enable":
-            status_container.info(get_status_msg("(start"))
+            containers["status"].info(get_status_msg("(start"))
 
         app = buildChatAgent(tools)
         config = {
             "recursion_limit": 50,
-            "status_container": status_container,
-            "response_container": response_container,
-            "key_container": key_container,
+            "containers": containers,
             "tools": tools            
         }
 
@@ -317,7 +322,6 @@ async def run(draft, reflection, status_container, response_container, key_conta
             "messages": [HumanMessage(content=instruction)]
         }
 
-        references = []
         final_output = None
         async for output in app.astream(inputs, config):
             for key, value in output.items():

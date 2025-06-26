@@ -57,6 +57,12 @@ def get_status_msg(status):
 
 response_msg = []
 
+index = 0
+def add_notification(container, message):
+    global index
+    container['notification'][index].info(message)
+    index += 1
+
 ####################### Agent #######################
 # Biology Agent
 #########################################################
@@ -90,9 +96,7 @@ async def Planner(state: State, config: dict) -> dict:
     request_id = config.get("configurable", {}).get("request_id", "")
     logger.info(f"request_id: {request_id}")
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     tools = config.get("configurable", {}).get("tools", None)
 
     mcp_tools = get_mcp_tools(tools)
@@ -100,7 +104,7 @@ async def Planner(state: State, config: dict) -> dict:
     prompt_name = "planner"
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg(f"{prompt_name}"))
+        containers['status'].info(get_status_msg(f"{prompt_name}"))
 
     system = get_prompt_template(prompt_name)
     # logger.info(f"system_prompt of planner: {system}")
@@ -123,7 +127,7 @@ async def Planner(state: State, config: dict) -> dict:
     logger.info(f"Planner: {result.content}")
 
     if chat.debug_mode == "Enable":
-        key_container.info(result.content)
+        add_notification(containers, result.content)
 
     # Update the plan into s3
     key = f"artifacts/{request_id}_plan.md"
@@ -174,9 +178,7 @@ async def Operator(state: State, config: dict) -> dict:
     # logger.info(f"state: {state}")
     appendix = state["appendix"] if "appendix" in state else []
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)    
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     tools = config.get("configurable", {}).get("tools", None)
 
     mcp_tools = get_mcp_tools(tools)
@@ -191,7 +193,7 @@ async def Operator(state: State, config: dict) -> dict:
     prompt_name = "operator"
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg(f"{prompt_name}"))
+        containers['status'].info(get_status_msg(f"{prompt_name}"))
 
     system = get_prompt_template(prompt_name)
     # logger.info(f"system_prompt: {system}")
@@ -244,7 +246,7 @@ async def Operator(state: State, config: dict) -> dict:
     logger.info(f"task: {task}")
 
     if chat.debug_mode == "Enable":
-        response_container.info(f"{next}: {task}")
+        add_notification(containers, f"{next}: {task}")
 
     if next == "FINISHED":
         return
@@ -261,9 +263,7 @@ async def Operator(state: State, config: dict) -> dict:
             question = task, 
             tools = tool_info, 
             system_prompt = None, 
-            status_container = status_container, 
-            response_container = response_container, 
-            key_container = key_container, 
+            containers = containers, 
             historyMode = "Disable", 
             previous_status_msg = status_msg, 
             previous_response_msg = response_msg)
@@ -279,12 +279,14 @@ async def Operator(state: State, config: dict) -> dict:
             logger.info(f"output_images: {output_images}")
             appendix.append(f"{output_images}")
 
-            response_container.info(f"{task}\n\n{body[:500]}")
+            if chat.debug_mode == "Enable":
+                add_notification(containers, f"{task}\n\n{body}")
         
         else:
             body = f"# {task}\n\n{result}\n\n"
 
-            response_container.info(body[:500])
+            if chat.debug_mode == "Enable":
+                add_notification(containers, body)
 
         key = f"artifacts/{request_id}_steps.md"
         time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
@@ -331,11 +333,10 @@ async def Reporter(state: State, config: dict) -> dict:
 
     prompt_name = "reporter"
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg(f"{prompt_name}"))
+        containers['status'].info(get_status_msg(f"{prompt_name}"))
 
     request_id = config.get("configurable", {}).get("request_id", "")    
     
@@ -372,10 +373,10 @@ async def Reporter(state: State, config: dict) -> dict:
     logger.info(f"result of Reporter: {result}")
 
     if chat.debug_mode == "Enable":
-        response_container.info(result.content)
+        add_notification(containers, result.content)
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg("end)"))
+        containers['status'].info(get_status_msg("end)"))
 
     appendix = state["appendix"] if "appendix" in state else []
     values = '\n\n'.join(appendix)
@@ -423,28 +424,21 @@ def get_tool_info(tools, st):
     toolmsg = ', '.join(toolList)
     st.info(f"Tools: {toolmsg}")
 
-async def run(question: str, tools: list[BaseTool], status_container, response_container, key_container, request_id, report_url):
-    logger.info(f"request_id: {request_id}")
+def initiate_report(agent,st):
+    # request id
+    request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
+    template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
+    template = template.replace("{request_id}", request_id)
+    template = template.replace("{sharing_url}", chat.path)
+    key = f"artifacts/{request_id}.html"
+    chat.create_object(key, template)
 
-    if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg("start"))
-        
-    inputs = {
-        "messages": [HumanMessage(content=question)],
-        "final_response": "",
-        "urls": [report_url]
-    }
-    config = {
-        "request_id": request_id,
-        "recursion_limit": 50,
-        "status_container": status_container,
-        "response_container": response_container,
-        "key_container": key_container,
-        "tools": tools
-    }
+    report_url = chat.path + "/artifacts/" + request_id + ".html"
+    logger.info(f"report_url: {report_url}")
+    st.info(f"report_url: {report_url}")
 
     # draw a graph
-    graph_diagram = bio_agent.get_graph().draw_mermaid_png(
+    graph_diagram = agent.get_graph().draw_mermaid_png(
         draw_method=MermaidDrawMethod.API,
         curve_style=CurveStyle.LINEAR
     )    
@@ -460,17 +454,7 @@ async def run(question: str, tools: list[BaseTool], status_container, response_c
     body = f"## {task}\n\n{output_images}"
     chat.updata_object(key, body, 'prepend')
 
-    value = None
-    async for output in bio_agent.astream(inputs, config):
-        for key, value in output.items():
-            logger.info(f"Finished running: {key}")
-    
-    logger.info(f"value: {value}")
-
-    if "report" in value:
-        return value["report"], value["urls"]
-    else:
-        return value["final_response"], value["urls"]
+    return request_id, report_url
 
 async def run_biology_agent(query, st):
     logger.info(f"###### run_biology_agent ######")
@@ -491,24 +475,45 @@ async def run_biology_agent(query, st):
             if chat.debug_mode == "Enable":
                 get_tool_info(tools, st)
                 logger.info(f"tools: {tools}")
+        
+            request_id, report_url = initiate_report(bio_agent, st)
 
-            # request id
-            request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-            template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
-            template = template.replace("{request_id}", request_id)
-            template = template.replace("{sharing_url}", chat.path)
-            key = f"artifacts/{request_id}.html"
-            chat.create_object(key, template)
+            containers = {
+                "status": st.empty(),
+                "notification": [st.empty() for _ in range(100)]
+            }
 
-            report_url = chat.path + "/artifacts/" + request_id + ".html"
-            logger.info(f"report_url: {report_url}")
-            st.info(f"report_url: {report_url}")
+            global index
+            index = 0
 
-            status_container = st.empty()            
-            key_container = st.empty()
-            response_container = st.empty()
-                                            
-            response, urls = await run(query, tools, status_container, response_container, key_container, request_id, report_url)
+            if chat.debug_mode == "Enable":
+                containers['status'].info(get_status_msg("start"))
+                
+            inputs = {
+                "messages": [HumanMessage(content=query)],
+                "final_response": "",
+                "urls": [report_url]
+            }
+            config = {
+                "request_id": request_id,
+                "recursion_limit": 50,
+                "containers": containers,
+                "tools": tools
+            }
+
+            value = None
+            async for output in bio_agent.astream(inputs, config):
+                for key, value in output.items():
+                    logger.info(f"Finished running: {key}")            
+            logger.info(f"value: {value}")
+
+            if "report" in value:
+                response = value["report"]
+                urls = value["urls"]
+            else:
+                response = value["final_response"], 
+                urls = value["urls"]
+
             logger.info(f"response: {response}")
             logger.info(f"urls: {urls}")
 
@@ -517,7 +522,7 @@ async def run_biology_agent(query, st):
                 response_msgs = '\n\n'.join(response_msg)
                 st.markdown(response_msgs)
 
-        image_url = []
+        image_url = []  # todo
     
     return response, image_url, urls
 

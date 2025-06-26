@@ -414,11 +414,12 @@ if clear_button==False and mode == '비용 분석 Agent':
     st.info(f"report_url: {report_url}")
     
     # show status and response
-    status_container = st.empty()
-    response_container = st.empty()
-    key_container = st.empty()
+    containers = {
+        "status": st.empty(),
+        "notification": [st.empty() for _ in range(100)]
+    }
 
-    response, urls = aws_cost.run(request_id, status_container, response_container, key_container, report_url)
+    response, urls = aws_cost.run(request_id, containers, report_url)
     logger.info(f"response: {response}")
 
     if aws_cost.response_msg:

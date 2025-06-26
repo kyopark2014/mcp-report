@@ -1,6 +1,7 @@
 import chat
 import logging
 import sys
+import utils
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -10,6 +11,9 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("mcp-cost")
+
+config = utils.load_config()
+aws_region = config["region"] if "region" in config else "us-east-1"
 
 mcp_user_config = {}    
 def load_config(mcp_type):

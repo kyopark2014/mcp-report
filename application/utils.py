@@ -45,34 +45,23 @@ def get_contents_type(file_name):
         content_type = "no info"    
     return content_type
 
-def status(st, str):
-    st.info(str)
-    
-def stcode(st, code):
-    st.code(code)
-
 def load_config():
     config = None
-    try:
-        with open("/home/config.json", "r", encoding="utf-8") as f:
-            config = json.load(f)
-            logger.info(f"config: {config}")
-
-    except Exception:
-        logger.info("use local configuration")
-        with open("application/config.json", "r", encoding="utf-8") as f:
-            config = json.load(f)
+    
+    with open("application/config.json", "r", encoding="utf-8") as f:
+        config = json.load(f)
     
     return config
 
 def load_mcp_env():
-    try:
-        with open("application/mcp.env", "r", encoding="utf-8") as f:
-            mcp_env = json.load(f)
-    except Exception:
-        mcp_env = {}
-
+    with open("application/mcp.env", "r", encoding="utf-8") as f:
+        mcp_env = json.load(f)
     return mcp_env
+
+def save_mcp_env(mcp_env):
+    with open("application/mcp.env", "w", encoding="utf-8") as f:
+        json.dump(mcp_env, f)
+
 
 def save_mcp_env(mcp_env):
     with open("application/mcp.env", "w", encoding="utf-8") as f:

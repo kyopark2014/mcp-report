@@ -35,6 +35,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger("planning-agent")
 
+index = 0
+def add_notification(container, message):
+    global index
+    container['notification'][index].info(message)
+    index += 1
+
 status_msg = []
 def get_status_msg(status):
     global status_msg
@@ -74,14 +80,11 @@ async def plan_node(state: State, config):
     logger.info(f"###### plan ######")
     logger.info(f"input: {state['input']}")
 
-    plan_container = config.get("configurable", {}).get("plan_container", None)
-    status_container = config.get("configurable", {}).get("status_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)    
+    containers = config.get("configurable", {}).get("containers", None)
 
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg(f"plan"))
-        key_container.info(f"계획을 생성합니다.")
+        containers['status'].info(get_status_msg(f"plan"))
+        add_notification(containers, f"계획을 생성합니다.")
     
     system = (
         "당신은 user의 question을 해결하기 위해 step by step plan을 생성하는 AI agent입니다."  
@@ -120,7 +123,7 @@ async def plan_node(state: State, config):
     logger.info(f"planning_steps: {planning_steps}")
 
     if chat.debug_mode=="Enable":
-        plan_container.info(f"Plan: {planning_steps}")
+        add_notification(containers, f"Plan: {planning_steps}")
     
     return {
         "input": state["input"],
@@ -132,25 +135,21 @@ async def execute_node(state: State, config):
     plan = state["plan"]
     logger.info(f"plan: {plan}")
     
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     tools = config.get("configurable", {}).get("tools", None)
 
     task = plan[0]
     logger.info(f"task: {task}")
     if chat.debug_mode == "Enable":
-        status_container.info(get_status_msg(f"execute"))    
-        key_container.info(f"현재 계획: {task}")
+        containers['status'].info(get_status_msg(f"execute"))    
+        add_notification(containers, f"현재 계획: {task}")
 
     global status_msg, response_msg
     result, image_url, status_msg, response_msg = await agent.run_task(
             question = task, 
             tools = tools, 
             system_prompt = None, 
-            status_container = status_container, 
-            response_container = response_container, 
-            key_container = key_container, 
+            containers = containers, 
             historyMode = "Disable", 
             previous_status_msg = status_msg, 
             previous_response_msg = response_msg
@@ -160,7 +159,7 @@ async def execute_node(state: State, config):
     logger.info(f"subresult: {subresult}, image_url: {image_url}")
 
     if chat.debug_mode=="Enable":
-        response_container.info(subresult)
+        add_notification(containers, subresult)
     
     return {
         "input": state["input"],
@@ -178,13 +177,11 @@ async def replan_node(state: State, config):
         logger.info(f"final info: {state['info'][-1]}")
         return {"response":state['info'][-1]}    
     
-    status_container = config.get("configurable", {}).get("status_container", None)
-    plan_container = config.get("configurable", {}).get("plan_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
     
     if chat.debug_mode=="Enable":
-        status_container.info(get_status_msg(f"replan"))
-        key_container.info(f"새로운 계획을 생성합니다.")
+        containers['status'].info(get_status_msg(f"replan"))
+        add_notification(containers, f"새로운 계획을 생성합니다.")
     
     system = (
         "당신은 복잡한 문제를 해결하기 위해 step by step plan을 생성하는 AI agent입니다."
@@ -242,7 +239,7 @@ async def replan_node(state: State, config):
         logger.info(f"planning_steps: {planning_steps}")
 
         if chat.debug_mode=="Enable":
-            plan_container.info(f"plan: {planning_steps}")
+            add_notification(containers, f"plan: {planning_steps}")
 
         return {"plan": planning_steps}
     
@@ -270,13 +267,11 @@ async def final_answer(state: State, config) -> str:
     query = state['input']
     logger.info(f"query: {query}")
 
-    status_container = config.get("configurable", {}).get("status_container", None)
-    response_container = config.get("configurable", {}).get("response_container", None)
-    key_container = config.get("configurable", {}).get("key_container", None)
+    containers = config.get("configurable", {}).get("containers", None)
 
     if chat.debug_mode=="Enable":
-        status_container.info(get_status_msg(f"final_answer"))
-        key_container.info(f"최종 답변을 생성합니다.")
+        containers['status'].info(get_status_msg(f"final_answer"))
+        add_notification(containers, f"최종 답변을 생성합니다.")
     
     if chat.isKorean(query)==True:
         system = (
@@ -325,7 +320,7 @@ async def final_answer(state: State, config) -> str:
         logger.info(f"output: {output}")
 
         if chat.debug_mode=="Enable":
-            response_container.info(f"최종결과: {output}")
+            add_notification(containers, f"최종결과: {output}")
 
         return {"answer": output}
         
@@ -369,7 +364,7 @@ def get_tool_info(tools, st):
     toolmsg = ', '.join(toolList)
     st.info(f"Tools: {toolmsg}")
 
-def initiate_report(st):
+def initiate_report(agent, st):
     # request id
     request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
     template = open(os.path.join(os.path.dirname(__file__), f"report.html")).read()
@@ -383,7 +378,7 @@ def initiate_report(st):
     st.info(f"report_url: {report_url}")
 
     # draw a graph
-    graph_diagram = planning_app.get_graph().draw_mermaid_png(
+    graph_diagram = agent.get_graph().draw_mermaid_png(
         draw_method=MermaidDrawMethod.API,
         curve_style=CurveStyle.LINEAR
     )    
@@ -421,26 +416,22 @@ async def run_planning_agent(query, st):
             if chat.debug_mode == "Enable":
                 get_tool_info(tools, st)
 
-            status_container = st.empty()      
-            plan_container = st.empty()
-            key_container = st.empty()
-            response_container = st.empty()
-
-            if chat.debug_mode == "Enable":
-                status_container.info(get_status_msg("start"))                
+            request_id, report_url = initiate_report(planning_app, st)
             
-            request_id, report_url = initiate_report(st)
-                                            
+            containers = {
+                "status": st.empty(),
+                "notification": [st.empty() for _ in range(100)]
+            }            
+            if chat.debug_mode == "Enable":
+                containers['status'].info(get_status_msg("start"))
+                                                        
             inputs = {
                 "input": query
             }
             config = {
                 "request_id": request_id,
                 "recursion_limit": 50,
-                "plan_container": plan_container,
-                "status_container": status_container,
-                "response_container": response_container,
-                "key_container": key_container,
+                "containers": containers,
                 "tools": tools
             }    
 
