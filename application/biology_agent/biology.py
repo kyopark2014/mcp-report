@@ -289,8 +289,7 @@ async def Operator(state: State, config: dict) -> dict:
                 add_notification(containers, body)
 
         key = f"artifacts/{request_id}_steps.md"
-        time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
-        
+        time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"        
         chat.updata_object(key, time + body, 'append')
         
         return {
@@ -323,9 +322,9 @@ async def create_final_report(request_id, question, body, urls):
     # report.md
     key = f"artifacts/{request_id}_report.md"
     time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
-    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)
-    
+    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)    
     chat.create_object(key, time + final_result)
+    
     return urls
 
 async def Reporter(state: State, config: dict) -> dict:

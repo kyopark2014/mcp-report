@@ -10,6 +10,7 @@ import os
 import random
 import string
 import agent
+import trans
 
 from typing_extensions import Annotated, TypedDict
 from typing import List, Tuple,Literal
@@ -22,6 +23,7 @@ from langgraph.graph import START, END, StateGraph
 from langchain_core.tools import BaseTool
 from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
 from langchain_mcp_adapters.client import MultiServerMCPClient
+from datetime import datetime
 
 import logging
 import sys
@@ -55,16 +57,6 @@ def get_status_msg(status):
 
 response_msg = []
 
-def get_mcp_tools(tools):
-    mcp_tools = []
-    for tool in tools:
-        name = tool.name
-        description = tool.description
-        description = description.replace("\n", "")
-        mcp_tools.append(f"{name}: {description}")
-        # logger.info(f"mcp_tools: {mcp_tools}")
-    return mcp_tools
-
 ####################### LangGraph #######################
 # Planning Agent
 #########################################################
@@ -75,12 +67,14 @@ class State(TypedDict):
     info: Annotated[List[Tuple], operator.add]
     response: list[str]
     answer: str
+    urls: list[str]
 
 async def plan_node(state: State, config):
     logger.info(f"###### plan ######")
     logger.info(f"input: {state['input']}")
 
     containers = config.get("configurable", {}).get("containers", None)
+    request_id = config.get("configurable", {}).get("request_id", "")
 
     if chat.debug_mode == "Enable":
         containers['status'].info(get_status_msg(f"plan"))
@@ -122,6 +116,12 @@ async def plan_node(state: State, config):
     planning_steps = plan.split('\n')
     logger.info(f"planning_steps: {planning_steps}")
 
+    # Update the plan into s3
+    key = f"artifacts/{request_id}_plan.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"
+    plan = f"{time}\n{planning_steps}"
+    chat.updata_object(key, f"{time}\n{plan}", 'prepend')
+
     if chat.debug_mode=="Enable":
         add_notification(containers, f"Plan: {planning_steps}")
     
@@ -136,6 +136,7 @@ async def execute_node(state: State, config):
     logger.info(f"plan: {plan}")
     
     containers = config.get("configurable", {}).get("containers", None)
+    request_id = config.get("configurable", {}).get("request_id", "")
     tools = config.get("configurable", {}).get("tools", None)
 
     task = plan[0]
@@ -158,6 +159,10 @@ async def execute_node(state: State, config):
     subresult = f"{task}:\n\n{result}"
     logger.info(f"subresult: {subresult}, image_url: {image_url}")
 
+    key = f"artifacts/{request_id}_steps.md"
+    time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"        
+    chat.updata_object(key, time + subresult, 'append')
+
     if chat.debug_mode=="Enable":
         add_notification(containers, subresult)
     
@@ -178,6 +183,7 @@ async def replan_node(state: State, config):
         return {"response":state['info'][-1]}    
     
     containers = config.get("configurable", {}).get("containers", None)
+    request_id = config.get("configurable", {}).get("request_id", "")
     
     if chat.debug_mode=="Enable":
         containers['status'].info(get_status_msg(f"replan"))
@@ -238,6 +244,10 @@ async def replan_node(state: State, config):
         planning_steps = plans.split('\n')
         logger.info(f"planning_steps: {planning_steps}")
 
+        key = f"artifacts/{request_id}_plan.md"
+        time = f"## {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"        
+        chat.updata_object(key, f"{time}\n{planning_steps}", 'append')
+
         if chat.debug_mode=="Enable":
             add_notification(containers, f"plan: {planning_steps}")
 
@@ -256,6 +266,39 @@ async def should_end(state: State) -> Literal["continue", "end"]:
     logger.info(f"should_end response: {next}")
     
     return next
+
+async def create_final_report(request_id, question, body, urls):
+    logger.info(f"#### create_final_report ####")
+    logger.info(f"request_id: {request_id}")
+    logger.info(f"question: {question}")
+    logger.info(f"body: {body}")
+    logger.info(f"urls: {urls}")
+
+    # report.html
+    output_html = trans.trans_md_to_html(body, question)
+    chat.create_object(f"artifacts/{request_id}_report.html", output_html)
+
+    logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
+    urls.append(f"{chat.path}/artifacts/{request_id}_report.html")
+
+    output = await utils.generate_pdf_report(body, request_id)
+    logger.info(f"result of generate_pdf_report: {output}")
+    if output: # reports/request_id.pdf         
+        pdf_filename = f"artifacts/{request_id}.pdf"
+        with open(pdf_filename, 'rb') as f:
+            pdf_bytes = f.read()
+            chat.upload_to_s3_artifacts(pdf_bytes, f"{request_id}.pdf")
+        logger.info(f"url of pdf: {chat.path}/artifacts/{request_id}.pdf")
+    
+    urls.append(f"{chat.path}/artifacts/{request_id}.pdf")
+
+    # report.md
+    key = f"artifacts/{request_id}_report.md"
+    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
+    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)    
+    chat.create_object(key, time + final_result)
+    
+    return urls
     
 async def final_answer(state: State, config) -> str:
     logger.info(f"#### final_answer ####")
@@ -268,6 +311,7 @@ async def final_answer(state: State, config) -> str:
     logger.info(f"query: {query}")
 
     containers = config.get("configurable", {}).get("containers", None)
+    request_id = config.get("configurable", {}).get("request_id", "")
 
     if chat.debug_mode=="Enable":
         containers['status'].info(get_status_msg(f"final_answer"))
@@ -322,7 +366,12 @@ async def final_answer(state: State, config) -> str:
         if chat.debug_mode=="Enable":
             add_notification(containers, f"최종결과: {output}")
 
-        return {"answer": output}
+        question = state["input"]
+        urls = state["urls"] if "urls" in state else []
+        urls = await create_final_report(request_id, question, output, urls)
+        logger.info(f"urls: {urls}")
+
+        return {"answer": output, "urls": urls}
         
     except Exception:
         err_msg = traceback.format_exc()
@@ -444,14 +493,12 @@ async def run_planning_agent(query, st):
             response = value["answer"]
             logger.info(f"response: {response}")
 
-            urls = []
-            urls.append(report_url)
+            urls = value["urls"] if "urls" in value else []
             logger.info(f"urls: {urls}")
 
-        if response_msg:
+        if urls:
             with st.expander(f"수행 결과"):
-                response_msgs = '\n\n'.join(response_msg)
-                st.markdown(response_msgs)
+                st.markdown('\n\n'.join(urls))
 
         image_url = []
     
