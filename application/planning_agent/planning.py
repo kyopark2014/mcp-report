@@ -449,7 +449,7 @@ async def run_planning_agent(query, st):
     logger.info(f"###### run_planning_agent ######")
     logger.info(f"query: {query}")
 
-    server_params = chat.load_multiple_mcp_server_parameters()
+    server_params = agent.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
     global status_msg, response_msg

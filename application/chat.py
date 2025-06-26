@@ -10,7 +10,6 @@ import info
 import PyPDF2
 import csv
 import utils
-import agent
 
 from io import BytesIO
 from PIL import Image
@@ -18,26 +17,15 @@ from langchain_aws import ChatBedrock
 from botocore.config import Config
 from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langchain.memory import ConversationBufferWindowMemory
-from langchain_core.tools import tool
 from langchain.docstore.document import Document
 from tavily import TavilyClient  
-from langchain_community.tools.tavily_search import TavilySearchResults
 from urllib import parse
 from pydantic.v1 import BaseModel, Field
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.utilities.tavily_search import TavilySearchAPIWrapper
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.messages import HumanMessage, AIMessage, ToolMessage
+from langchain_core.messages import HumanMessage
 
-from mcp import ClientSession, StdioServerParameters
-from mcp.client.stdio import stdio_client
-from langchain_mcp_adapters.tools import load_mcp_tools
-from langgraph.prebuilt import ToolNode
-from typing import Literal
-from langgraph.graph import START, END, StateGraph
-from typing_extensions import Annotated, TypedDict
-from langgraph.graph.message import add_messages
-from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
 from multiprocessing import Process, Pipe
@@ -67,67 +55,6 @@ checkpointers[userId] = checkpointer
 memorystores[userId] = memorystore
 
 reasoning_mode = 'Disable'
-# List to store debug messages
-debug_messages = []  
-
-def get_debug_messages():
-    global debug_messages
-    messages = debug_messages.copy()
-    debug_messages = []  # Clear messages after returning
-    return messages
-
-def push_debug_messages(type, contents):
-    global debug_messages
-    debug_messages.append({
-        type: contents
-    })
-
-def status_messages(message):
-    # type of message
-    # if isinstance(message, AIMessage):
-    #     logger.info(f"status_messages (AIMessage): {message}")
-    # elif isinstance(message, ToolMessage):
-    #     logger.info(f"status_messages (ToolMessage): {message}")
-    # elif isinstance(message, HumanMessage):
-    #     logger.info(f"status_messages (HumanMessage): {message}")
-
-    if isinstance(message, AIMessage):
-        if message.content:
-            logger.info(f"AIMessage: {message.content}")
-            content = message.content
-            if len(content) > 500:
-                content = content[:500] + "..."       
-            push_debug_messages("text", content)
-        if hasattr(message, 'tool_calls') and message.tool_calls:
-            logger.info(f"Tool name: {message.tool_calls[0]['name']}")
-                
-            if 'args' in message.tool_calls[0]:
-                logger.info(f"Tool args: {message.tool_calls[0]['args']}")
-                    
-                args = message.tool_calls[0]['args']
-                if 'code' in args:
-                    logger.info(f"code: {args['code']}")
-                    push_debug_messages("text", args['code'])
-                elif message.tool_calls[0]['args']:
-                    status = f"Tool name: {message.tool_calls[0]['name']}  \nTool args: {message.tool_calls[0]['args']}"
-                    # logger.info(f"status: {status}")
-                    push_debug_messages("text", status)
-
-    elif isinstance(message, ToolMessage):
-        if message.name:
-            logger.info(f"Tool name: {message.name}")
-            
-            if message.content:                
-                content = message.content
-                if len(content) > 500:
-                    content = content[:500] + "..."
-                logger.info(f"Tool result: {content}")                
-                status = f"Tool name: {message.name}  \nTool result: {content}"
-            else:
-                status = f"Tool name: {message.name}"
-
-            logger.info(f"status: {status}")
-            push_debug_messages("text", status)
 
 def initiate():
     global userId
@@ -1665,115 +1592,3 @@ def run_rag_with_knowledge_base(query, st):
     
     return msg, reference_docs
    
-####################### Agent #######################
-# MCP Agent 
-#####################################################
-def load_mcp_server_parameters():
-    logger.info(f"mcp_json: {mcp_json}")
-
-    mcpServers = mcp_json.get("mcpServers")
-    logger.info(f"mcpServers: {mcpServers}")
-
-    command = ""
-    args = []
-    if mcpServers is not None:
-        for server in mcpServers:
-            logger.info(f"server: {server}")
-
-            config = mcpServers.get(server)
-            logger.info(f"config: {config}")
-
-            if "command" in config:
-                command = config["command"]
-            if "args" in config:
-                args = config["args"]
-            if "env" in config:
-                env = config["env"]
-
-            break
-
-    return StdioServerParameters(
-        command=command,
-        args=args,
-        env=env
-    )
-
-def load_multiple_mcp_server_parameters():
-    logger.info(f"mcp_json: {mcp_json}")
-
-    mcpServers = mcp_json.get("mcpServers")
-    logger.info(f"mcpServers: {mcpServers}")
-  
-    server_info = {}
-    if mcpServers is not None:
-        command = ""
-        args = []
-        for server in mcpServers:
-            logger.info(f"server: {server}")
-
-            config = mcpServers.get(server)
-            logger.info(f"config: {config}")
-
-            if "command" in config:
-                command = config["command"]
-            if "args" in config:
-                args = config["args"]
-            if "env" in config:
-                env = config["env"]
-
-                server_info[server] = {
-                    "command": command,
-                    "args": args,
-                    "env": env,
-                    "transport": "stdio"
-                }
-            else:
-                server_info[server] = {
-                    "command": command,
-                    "args": args,
-                    "transport": "stdio"
-                }
-    logger.info(f"server_info: {server_info}")
-
-    return server_info
-
-def tool_info(tools, st):
-    tool_info = ""
-    tool_list = []
-    for tool in tools:
-        tool_info += f"name: {tool.name}\n"    
-        if hasattr(tool, 'description'):
-            tool_info += f"description: {tool.description}\n"
-        tool_info += f"args_schema: {tool.args_schema}\n\n"
-        tool_list.append(tool.name)
-    logger.info(f"Tools: {tool_list}")
-    st.info(f"Tools: {tool_list}")
-
-async def run_agent(query, historyMode, st):
-    server_params = load_multiple_mcp_server_parameters()
-    logger.info(f"server_params: {server_params}")
-
-    async with MultiServerMCPClient(server_params) as client:
-        with st.status("thinking...", expanded=True, state="running") as status:
-            tools = client.get_tools()
-
-            if debug_mode == "Enable":
-                tool_info(tools, st)
-                logger.info(f"tools: {tools}")
-
-            containers = {
-                "status": st.empty(),
-                "notification": [st.empty() for _ in range(100)]
-            }
-                        
-            result, image_url = await agent.run(query, tools, containers, historyMode)            
-
-        if agent.response_msg:
-            with st.expander(f"수행 결과"):
-                response_msg = '\n\n'.join(agent.response_msg)
-                st.markdown(response_msg)
-
-        logger.info(f"result: {result}")       
-        logger.info(f"image_url: {image_url}")
-    
-    return result, image_url

@@ -3,6 +3,7 @@ import sys
 import json
 import traceback
 import chat
+import agent
 
 from langgraph.prebuilt import ToolNode
 from typing import Literal
@@ -283,7 +284,7 @@ async def run(draft, reflection, containers, previous_status_msg, previous_respo
     status_msg = previous_status_msg
     response_msg = previous_response_msg
 
-    server_params = chat.load_multiple_mcp_server_parameters()
+    server_params = agent.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
     async with MultiServerMCPClient(server_params) as client:

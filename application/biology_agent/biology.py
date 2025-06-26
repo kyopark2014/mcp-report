@@ -459,7 +459,7 @@ async def run_biology_agent(query, st):
     logger.info(f"###### run_biology_agent ######")
     logger.info(f"query: {query}")
 
-    server_params = chat.load_multiple_mcp_server_parameters()
+    server_params = agent.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
     global status_msg, response_msg
