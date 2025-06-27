@@ -262,7 +262,7 @@ def create_service_cost_visualizations():
     """Cost Visualization of aws services"""
     logger.info("Creating cost visualizations...")
 
-    if not service_cost_data:
+    if not cost_data['service_costs']:
         logger.info("No cost data available")
         return None
         
