@@ -9,7 +9,8 @@ import utils
 import os
 import random
 import string
-import agent
+import langgraph_agent
+import strands_agent
 import trans
 
 from typing_extensions import Annotated, TypedDict
@@ -38,9 +39,9 @@ logging.basicConfig(
 logger = logging.getLogger("planning-agent")
 
 index = 0
-def add_notification(container, message):
+def add_notification(containers, message):
     global index
-    container['notification'][index].info(message)
+    containers['notification'][index].info(message)
     index += 1
 
 status_msg = []
@@ -56,6 +57,7 @@ def get_status_msg(status):
         return "[status]\n" + status
 
 response_msg = []
+mcp_server_info = {}
 
 ####################### LangGraph #######################
 # Planning Agent
@@ -138,6 +140,7 @@ async def execute_node(state: State, config):
     containers = config.get("configurable", {}).get("containers", None)
     request_id = config.get("configurable", {}).get("request_id", "")
     tools = config.get("configurable", {}).get("tools", None)
+    agent_type = config.get("configurable", {}).get("agent_type", "LangGraph")
 
     task = plan[0]
     logger.info(f"task: {task}")
@@ -145,16 +148,28 @@ async def execute_node(state: State, config):
         containers['status'].info(get_status_msg(f"execute"))    
         add_notification(containers, f"현재 계획: {task}")
 
-    global status_msg, response_msg
-    result, image_url, status_msg, response_msg = await agent.run_task(
+    if agent_type == "LangGraph":
+        global status_msg, response_msg
+        result, image_url, status_msg, response_msg = await langgraph_agent.run_task(
+                question = task, 
+                tools = tools, 
+                system_prompt = None, 
+                containers = containers, 
+                historyMode = "Disable", 
+                previous_status_msg = status_msg, 
+                previous_response_msg = response_msg
+        )
+    else:
+        mcp_servers = get_mcp_server_list()
+        logger.info(f"mcp_servers: {mcp_servers}")
+        result, image_url, status_msg, response_msg = await strands_agent.run_task(
             question = task, 
-            tools = tools, 
+            mcp_servers = mcp_servers, 
             system_prompt = None, 
             containers = containers, 
             historyMode = "Disable", 
             previous_status_msg = status_msg, 
-            previous_response_msg = response_msg
-    )
+            previous_response_msg = response_msg)
     
     subresult = f"{task}:\n\n{result}"
     logger.info(f"subresult: {subresult}, image_url: {image_url}")
@@ -444,23 +459,39 @@ def initiate_report(agent, st):
     chat.updata_object(key, body, 'prepend')
 
     return request_id, report_url
+
+def get_mcp_server_name(too_name):
+    mcp_server_name = {}
+    for server_name, tools in mcp_server_info:
+        tool_names = [tool.name for tool in tools]
+        logger.info(f"{server_name}: {tool_names}")
+        for name in tool_names:
+            mcp_server_name[name] = server_name
+    return mcp_server_name[too_name]
+
+def get_mcp_server_list():
+    server_lists = []
+    for server_name, tools in mcp_server_info:
+        server_lists.append(server_name)
+    return server_lists
     
-async def run_planning_agent(query, st):
+async def run_planning_agent(query, agent_type, st):
     logger.info(f"###### run_planning_agent ######")
     logger.info(f"query: {query}")
 
-    server_params = agent.load_multiple_mcp_server_parameters()
+    server_params = langgraph_agent.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
-    global status_msg, response_msg
+    global status_msg, response_msg, mcp_server_info
     status_msg = []
     response_msg = []
     
     async with MultiServerMCPClient(server_params) as client:
         response = ""
-        with st.status("thinking...", expanded=True, state="running") as status:            
+        with st.status("thinking...", expanded=True, state="running") as status:       
+            mcp_server_info = client.server_name_to_tools.items()
+
             tools = client.get_tools()
-            logger.info(f"tools: {tools}")
 
             if chat.debug_mode == "Enable":
                 get_tool_info(tools, st)
@@ -468,6 +499,7 @@ async def run_planning_agent(query, st):
             request_id, report_url = initiate_report(planning_app, st)
             
             containers = {
+                "tools": st.empty(),
                 "status": st.empty(),
                 "notification": [st.empty() for _ in range(100)]
             }            
@@ -481,7 +513,8 @@ async def run_planning_agent(query, st):
                 "request_id": request_id,
                 "recursion_limit": 50,
                 "containers": containers,
-                "tools": tools
+                "tools": tools,
+                "agent_type": agent_type
             }    
 
             value = None

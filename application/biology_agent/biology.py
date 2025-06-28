@@ -6,7 +6,8 @@ import os
 import traceback
 import datetime
 import biology_agent.biology as biology
-import agent
+import langgraph_agent
+import strands_agent
 import json
 import re
 import random
@@ -14,25 +15,17 @@ import string
 import trans
 
 from datetime import datetime
-from langchain_core.tools import tool
 from typing_extensions import Annotated, TypedDict
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage, ToolMessage
-from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
+from langchain_core.messages import HumanMessage, AIMessage
+from langchain_core.prompts import ChatPromptTemplate
 from langgraph.graph import START, END, StateGraph
 
-from reportlab.lib.pagesizes import letter
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
-from langchain_core.tools import BaseTool
-from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
+from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod
 from langchain_mcp_adapters.client import MultiServerMCPClient
 
 import logging
 import sys
-from reportlab.lib import colors
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -56,11 +49,12 @@ def get_status_msg(status):
         return "[status]\n" + status
 
 response_msg = []
+mcp_server_info = {}
 
 index = 0
-def add_notification(container, message):
+def add_notification(containers, message):
     global index
-    container['notification'][index].info(message)
+    containers['notification'][index].info(message)
     index += 1
 
 ####################### Agent #######################
@@ -180,6 +174,7 @@ async def Operator(state: State, config: dict) -> dict:
 
     containers = config.get("configurable", {}).get("containers", None)
     tools = config.get("configurable", {}).get("tools", None)
+    agent_type = config.get("configurable", {}).get("agent_type", None)
 
     mcp_tools = get_mcp_tools(tools)
     
@@ -243,7 +238,7 @@ async def Operator(state: State, config: dict) -> dict:
     logger.info(f"next: {next}")
 
     task = result_dict["task"]
-    logger.info(f"task: {task}")
+    logger.info(f"task: {task}")    
 
     if chat.debug_mode == "Enable":
         add_notification(containers, f"{next}: {task}")
@@ -251,23 +246,37 @@ async def Operator(state: State, config: dict) -> dict:
     if next == "FINISHED":
         return
     else:
-        tool_info = []
-        for tool in tools:
-            if tool.name == next:
-                tool_info.append(tool)
-                logger.info(f"tool_info: {tool_info}")
-                
         global status_msg, response_msg
 
-        result, image_url, status_msg, response_msg = await agent.run_task(
-            question = task, 
-            tools = tool_info, 
-            system_prompt = None, 
-            containers = containers, 
-            historyMode = "Disable", 
-            previous_status_msg = status_msg, 
-            previous_response_msg = response_msg)
+        if agent_type == "LangGraph":
+            tool_info = []
+            for tool in tools:
+                if tool.name == next:
+                    tool_info.append(tool)
+                    logger.info(f"tool_info: {tool_info}")
+                    break
+                
+            result, image_url, status_msg, response_msg = await langgraph_agent.run_task(
+                question = task, 
+                tools = tool_info, 
+                system_prompt = None, 
+                containers = containers, 
+                historyMode = "Disable", 
+                previous_status_msg = status_msg, 
+                previous_response_msg = response_msg)
+        else:  # strands_agent
+            mcp_server_name = get_mcp_server_name(next)
+            logger.info(f"mcp_server_name: {mcp_server_name}")
 
+            result, image_url, status_msg, response_msg = await strands_agent.run_task(
+                question = task, 
+                mcp_servers = [mcp_server_name], 
+                system_prompt = None, 
+                containers = containers, 
+                historyMode = "Disable", 
+                previous_status_msg = status_msg, 
+                previous_response_msg = response_msg)
+            
         logger.info(f"response of Operator: {result}, {image_url}")
 
         if image_url:
@@ -455,20 +464,37 @@ def initiate_report(agent,st):
 
     return request_id, report_url
 
-async def run_biology_agent(query, st):
+def get_mcp_server_name(too_name):
+    mcp_server_name = {}
+    for server_name, tools in mcp_server_info:
+        tool_names = [tool.name for tool in tools]
+        logger.info(f"{server_name}: {tool_names}")
+        for name in tool_names:
+            mcp_server_name[name] = server_name
+    return mcp_server_name[too_name]
+
+def get_mcp_server_list():
+    server_lists = []
+    for server_name, tools in mcp_server_info:
+        server_lists.append(server_name)
+    return server_lists
+
+async def run_biology_agent(query, agent_type, st):
     logger.info(f"###### run_biology_agent ######")
     logger.info(f"query: {query}")
 
-    server_params = agent.load_multiple_mcp_server_parameters()
+    server_params = langgraph_agent.load_multiple_mcp_server_parameters()
     logger.info(f"server_params: {server_params}")
 
-    global status_msg, response_msg
+    global status_msg, response_msg, mcp_server_info
     status_msg = []
     response_msg = []
     
     async with MultiServerMCPClient(server_params) as client:
         response = ""
-        with st.status("thinking...", expanded=True, state="running") as status:            
+        with st.status("thinking...", expanded=True, state="running") as status:       
+            mcp_server_info = client.server_name_to_tools.items()
+
             tools = client.get_tools()
 
             if chat.debug_mode == "Enable":
@@ -478,6 +504,7 @@ async def run_biology_agent(query, st):
             request_id, report_url = initiate_report(bio_agent, st)
 
             containers = {
+                "tools": st.empty(),
                 "status": st.empty(),
                 "notification": [st.empty() for _ in range(100)]
             }
@@ -497,7 +524,8 @@ async def run_biology_agent(query, st):
                 "request_id": request_id,
                 "recursion_limit": 50,
                 "containers": containers,
-                "tools": tools
+                "tools": tools,
+                "agent_type": agent_type
             }
 
             value = None
