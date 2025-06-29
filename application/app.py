@@ -264,6 +264,8 @@ with st.sidebar:
                 logger.info(f"remove seed_image_url")
                 update_seed_image_url("") 
 
+        mcp_servers = [server for server, is_selected in mcp_selections.items() if is_selected]
+
     # model selection box
     modelName = st.selectbox(
         '🖊️ 사용 모델을 선택하세요',
@@ -299,9 +301,6 @@ with st.sidebar:
         uploaded_file = st.file_uploader("RAG를 위한 파일을 선택합니다.", type=["pdf", "txt", "py", "md", "csv", "json"], key=chat.fileId)
 
     chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode)
-    selected_mcp_servers = [tool for tool in mcp_options if mcp_selections.get(tool, False)]
-
-    mcp_servers = [server for server, is_selected in mcp_selections.items() if is_selected]
 
     st.success(f"Connected to {modelName}", icon="💚")
     clear_button = st.button("대화 초기화", key="clear")
