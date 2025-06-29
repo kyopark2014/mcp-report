@@ -13,6 +13,7 @@ import re
 import random
 import string
 import trans
+import mcp_config
 
 from datetime import datetime
 from typing_extensions import Annotated, TypedDict
@@ -270,6 +271,7 @@ async def Operator(state: State, config: dict) -> dict:
 
             result, image_url, status_msg, response_msg = await strands_agent.run_task(
                 question = task, 
+                strands_tools = [],
                 mcp_servers = [mcp_server_name], 
                 system_prompt = None, 
                 containers = containers, 
@@ -479,11 +481,14 @@ def get_mcp_server_list():
         server_lists.append(server_name)
     return server_lists
 
-async def run_biology_agent(query, agent_type, st):
+async def run_biology_agent(query, mcp_servers, agent_type, st):
     logger.info(f"###### run_biology_agent ######")
     logger.info(f"query: {query}")
 
-    server_params = langgraph_agent.load_multiple_mcp_server_parameters()
+    mcp_json = mcp_config.load_selected_config(mcp_servers)
+    logger.info(f"mcp_json: {mcp_json}")  
+
+    server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
     logger.info(f"server_params: {server_params}")
 
     global status_msg, response_msg, mcp_server_info

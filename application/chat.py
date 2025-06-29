@@ -143,13 +143,12 @@ client = boto3.client(
     region_name=bedrock_region
 )  
 
-mcp_json = ""
 grading_mode = 'Disable'
 reasoning_mode = 'Disable'
 
-def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, mcp):    
+def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode):    
     global model_name, model_id, model_type, debug_mode, multi_region, reasoning_mode
-    global models, mcp_json, grading_mode
+    global models, grading_mode
 
     # load mcp.env    
     mcp_env = utils.load_mcp_env()
@@ -185,9 +184,6 @@ def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, mcp):
     if reasoning_mode != reasoningMode:
         reasoning_mode = reasoningMode
         logger.info(f"reasoning_mode: {reasoning_mode}")
-
-    mcp_json = mcp
-    logger.info(f"mcp_json: {mcp_json}")
 
     utils.save_mcp_env(mcp_env)
     logger.info(f"mcp.env: {mcp_env}")

@@ -190,7 +190,7 @@ with st.sidebar:
                 "사용자 설정"
             ]
         mcp_selections = {}
-        default_selections = ["default", "tavily-manual", "use_aws", "code interpreter", "terminal"]
+        default_selections = ["default", "tavily-manual", "use_aws", "code interpreter", "filesystem"]
 
         if mode=='Agent' or mode=='Agent (Chat)' or mode=='Planning Agent' or mode=='비용 분석 Agent' or mode=='Biology Agent':
             agent_type = st.radio(
@@ -264,9 +264,6 @@ with st.sidebar:
                 logger.info(f"remove seed_image_url")
                 update_seed_image_url("") 
 
-        mcp = mcp_config.load_selected_config(mcp_selections)
-        # logger.info(f"mcp: {mcp}")
-
     # model selection box
     modelName = st.selectbox(
         '🖊️ 사용 모델을 선택하세요',
@@ -301,9 +298,10 @@ with st.sidebar:
         # print('fileId: ', chat.fileId)
         uploaded_file = st.file_uploader("RAG를 위한 파일을 선택합니다.", type=["pdf", "txt", "py", "md", "csv", "json"], key=chat.fileId)
 
-    chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, mcp)
+    chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode)
     selected_mcp_servers = [tool for tool in mcp_options if mcp_selections.get(tool, False)]
-    strands_agent.update([], selected_mcp_servers)
+
+    mcp_servers = [server for server, is_selected in mcp_selections.items() if is_selected]
 
     st.success(f"Connected to {modelName}", icon="💚")
     clear_button = st.button("대화 초기화", key="clear")
@@ -490,9 +488,9 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
                     "notification": [st.empty() for _ in range(100)]
                 }
                 if agent_type == "LangGraph":
-                    response, image_url = asyncio.run(langgraph_agent.run_agent(prompt, history_mode, containers))    
+                    response, image_url = asyncio.run(langgraph_agent.run_agent(prompt, mcp_servers, history_mode, containers))    
                 else:
-                    response, image_url = asyncio.run(strands_agent.run_agent(prompt, history_mode, containers))
+                    response, image_url = asyncio.run(strands_agent.run_agent(prompt, [], mcp_servers, history_mode, containers))
 
             # if langgraph_agent.response_msg:
             #     with st.expander(f"수행 결과"):
@@ -517,7 +515,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             chat.references = []
             chat.image_url = []
             
-            response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, agent_type, st))
+            response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, mcp_servers, agent_type, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 
@@ -542,7 +540,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             chat.references = []
             chat.image_url = []
             
-            response, image_url, urls = asyncio.run(planning.run_planning_agent(prompt, agent_type, st))
+            response, image_url, urls = asyncio.run(planning.run_planning_agent(prompt, mcp_servers, agent_type, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 
