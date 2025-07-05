@@ -68,34 +68,6 @@ def get_status_msg(status):
         status = " -> ".join(status_msg)
         return "[status]\n" + status    
 
-def load_config_by_name(name):
-    if name == "image generation":
-        config = mcp_config.load_config('image_generation')
-    elif name == "aws diagram":
-        config = mcp_config.load_config('aws_diagram')
-    elif name == "aws document":
-        config = mcp_config.load_config('aws_documentation')
-    elif name == "aws cost":
-        config = mcp_config.load_config('aws_cost')
-    elif name == "ArXiv":
-        config = mcp_config.load_config('arxiv')
-    elif name == "aws cloudwatch":
-        config = mcp_config.load_config('aws_cloudwatch')
-    elif name == "aws storage":
-        config = mcp_config.load_config('aws_storage')
-    elif name == "knowledge base":
-        config = mcp_config.load_config('knowledge_base_lambda')
-    elif name == "code interpreter":
-        config = mcp_config.load_config('code_interpreter')
-    elif name == "aws cli":
-        config = mcp_config.load_config('aws_cli')
-    elif name == "text editor":
-        config = mcp_config.load_config('text_editor')
-    else:
-        config = mcp_config.load_config(name)
-    logger.info(f"config: {config}")
-    return config
-
 #########################################################
 # Strands Agent 
 #########################################################
@@ -238,7 +210,7 @@ def init_mcp_clients(mcp_servers: list):
     
     for tool in mcp_servers:
         logger.info(f"Initializing MCP client for tool: {tool}")
-        config = load_config_by_name(tool)
+        config = mcp_config.load_config(tool)
         # logger.info(f"config: {config}")
 
         # Skip if config is empty or doesn't have mcpServers
@@ -448,7 +420,7 @@ def get_tool_info(tool_name, tool_content):
                                 # logger.info(f"uri (list): {uri}")
                                 ext = uri.split(".")[-1]
 
-                                # ext가 이미지라면 
+                                # if ext is an image 
                                 sharing_url = utils.sharing_url
                                 url = sharing_url + "/" + s3_prefix + "/" + uri.split("/")[-1]
                                 if ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "ico", "webp"]:

@@ -382,9 +382,6 @@ if uploaded_file is not None and clear_button==False:
         status = f'선택한 "{file_name}"의 내용을 요약합니다.'
         # my_bar = st.sidebar.progress(0, text=status)
         
-        # for percent_complete in range(100):
-        #     time.sleep(0.2)
-        #     my_bar.progress(percent_complete + 1, text=status)
         if debugMode=='Enable':
             logger.info(f"status: {status}")
             st.info(status)
@@ -422,7 +419,7 @@ if clear_button==False and mode == '비용 분석 Agent':
     # show status and response
     containers = {
         "status": st.empty(),
-        "notification": [st.empty() for _ in range(100)]
+        "notification": [st.empty() for _ in range(500)]
     }
 
     response, urls = aws_cost.run(request_id, containers, report_url)
@@ -484,7 +481,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
                 containers = {
                     "tools": st.empty(),
                     "status": st.empty(),
-                    "notification": [st.empty() for _ in range(100)]
+                    "notification": [st.empty() for _ in range(500)]
                 }
                 if agent_type == "LangGraph":
                     response, image_url = asyncio.run(langgraph_agent.run_agent(prompt, mcp_servers, history_mode, containers))    
