@@ -615,7 +615,7 @@ async def run_agent(question, strands_tools, mcp_servers, historyMode, container
 
                 for content in message["content"]:                
                     if "text" in content:
-                        logger.info(f"text: {content["text"]}")
+                        logger.info(f"text: {content['text']}")
                         if chat.debug_mode == 'Enable':
                             add_response(containers, content["text"])
 
