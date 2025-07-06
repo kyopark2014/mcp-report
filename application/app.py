@@ -404,24 +404,7 @@ if seed_image_url and clear_button==False and enable_seed==True:
     logger.info(f"preview: {seed_image_url}")
     
 if clear_button==False and mode == '비용 분석 Agent':
-    request_id = ''.join(random.choices(string.ascii_lowercase + string.digits, k=8))
-
-    template = open(os.path.join(os.path.dirname(__file__), f"aws_cost/report.html")).read()
-    template = template.replace("{request_id}", request_id)
-    template = template.replace("{sharing_url}", chat.path)
-    key = f"artifacts/{request_id}.html"
-    chat.create_object(key, template)
-    
-    report_url = chat.path + "/artifacts/" + request_id + ".html"
-    logger.info(f"report_url: {report_url}")
-    st.info(f"report_url: {report_url}")
-    
-    # show status and response
-    status_container = st.empty()
-    response_container = st.empty()
-    key_container = st.empty()
-    
-    response = aws_cost.run(request_id, mcp_servers, status_container, response_container, key_container)
+    response = aws_cost.run_cost_agent(mcp_servers, st)
     logger.info(f"response: {response}")
 
     if aws_cost.response_msg:
@@ -430,11 +413,6 @@ if clear_button==False and mode == '비용 분석 Agent':
             st.markdown(response_msgs)
 
     st.write(response)
-
-    # if urls:
-    #     with st.expander(f"최종 결과"):
-    #         url_msg = '\n\n'.join(urls)
-    #         st.markdown(url_msg)
 
     st.session_state.messages.append({"role": "assistant", "content": response})
 
