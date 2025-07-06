@@ -32,8 +32,6 @@ import json
 import traceback
 import asyncio
 import aws_cost.reflection_agent as reflection_agent
-import trans
-import utils
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -44,11 +42,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger("cost_analysis")
 
-index = 0
-def add_notification(container, message):
-    global index
-    container["notification"][index].info(message)
-    index += 1
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
 
 def get_url(figure, prefix):
     # Convert fig_pie to base64 image
@@ -148,34 +145,6 @@ def revise_draft(draft, context):
     logger.info(f"result: {result.content}")
                             
     return result.content
-
-async def create_final_report(request_id, question, body, urls):
-    # report.html
-    output_html = trans.trans_md_to_html(body, question)
-    chat.create_object(f"artifacts/{request_id}_report.html", output_html)
-
-    logger.info(f"url of html: {chat.path}/artifacts/{request_id}_report.html")
-    urls.append(f"{chat.path}/artifacts/{request_id}_report.html")
-
-    output = await utils.generate_pdf_report(body, request_id)
-    logger.info(f"result of generate_pdf_report: {output}")
-    if output: # reports/request_id.pdf         
-        pdf_filename = f"artifacts/{request_id}.pdf"
-        with open(pdf_filename, 'rb') as f:
-            pdf_bytes = f.read()
-            chat.upload_to_s3_artifacts(pdf_bytes, f"{request_id}.pdf")
-        logger.info(f"url of pdf: {chat.path}/artifacts/{request_id}.pdf")
-        urls.append(f"{chat.path}/artifacts/{request_id}.pdf")
-
-    logger.info(f"urls: {urls}")
-    
-    # report.md
-    key = f"artifacts/{request_id}_report.md"
-    time = f"# {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n"    
-    final_result = body + "\n\n" + f"## 최종 결과\n\n"+'\n\n'.join(urls)
-    
-    chat.updata_object(key, time + final_result, 'prepend')
-    return urls
     
 #########################################################
 # Cost Agent
@@ -212,17 +181,28 @@ def service_cost(state: CostState, config) -> dict:
     days = 30
 
     request_id = config.get("configurable", {}).get("request_id", "")
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
 
     try:
-        if chat.debug_mode == "Enable":
-            containers["status"].info(get_status_msg("service_cost"))
+        if status_container:
+            status_container.info(get_status_msg("service_cost"))
 
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
         # cost explorer
-        ce = boto3.client('ce')
+        if aws_access_key and aws_secret_key:
+            ce = boto3.client(
+                service_name='ce',
+                aws_access_key_id=aws_access_key, 
+                aws_secret_access_key=aws_secret_key, 
+                aws_session_token=aws_session_token
+            )
+        else:
+            ce = boto3.client(
+                service_name='ce'
+            )
 
         # service cost
         service_response = ce.get_cost_and_usage(
@@ -249,13 +229,11 @@ def service_cost(state: CostState, config) -> dict:
     ])
     logger.info(f"Service Costs: {service_costs}")
 
+    if response_container:
+        value = service_costs.to_string()
+        response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
     
-    value = service_costs.to_string()
-    response_msg.append(value[:800])
-
-    if chat.debug_mode == "Enable":
-        add_notification(containers, value)
-            
     # service cost (pie chart)
     fig_pie = px.pie(
         service_costs,
@@ -281,10 +259,10 @@ def service_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    if chat.debug_mode == "Enable":
+    if response_container:
         value = summary
-        response_msg.append(value)
-        add_notification(containers, value)
+        response_container.info('[response]\n' + value[:200])
+        response_msg.append(value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -301,17 +279,28 @@ def region_cost(state: CostState, config) -> dict:
     days = 30
 
     request_id = config.get("configurable", {}).get("request_id", "")
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
     
     try:
-        if chat.debug_mode == "Enable":
-            containers["status"].info(get_status_msg("region_cost"))
+        if status_container:
+            status_container.info(get_status_msg("region_cost"))
 
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
         # cost explorer
-        ce = boto3.client('ce')
+        if aws_access_key and aws_secret_key:
+            ce = boto3.client(
+                service_name='ce',
+                aws_access_key_id=aws_access_key, 
+                aws_secret_access_key=aws_secret_key, 
+                aws_session_token=aws_session_token
+            )
+        else:
+            ce = boto3.client(
+                service_name='ce'
+            )
 
         # region cost
         region_response = ce.get_cost_and_usage(
@@ -338,11 +327,10 @@ def region_cost(state: CostState, config) -> dict:
     ])
     logger.info(f"Region Costs: {region_costs}")
 
-    value = region_costs.to_string()
-    response_msg.append(value[:800])
-    
-    if chat.debug_mode == "Enable":
-        add_notification(containers, '[response]\n' + value)
+    if response_container:
+        value = region_costs.to_string()
+        response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
 
     # region cost (bar chart)
     fig_bar = px.bar(
@@ -367,9 +355,10 @@ def region_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    response_msg.append(time + body)
-    if chat.debug_mode == "Enable":        
-        add_notification(containers, '[response]\n' + time + body)
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + time + body[:200])
+        response_msg.append(time + value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -385,17 +374,28 @@ def daily_cost(state: CostState, config) -> dict:
     days = 30
 
     request_id = config.get("configurable", {}).get("request_id", "")
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
     
     try:
-        if chat.debug_mode == "Enable":
-            containers["status"].info(get_status_msg("daily_cost"))
+        if status_container:
+            status_container.info(get_status_msg("daily_cost"))
 
         end_date = datetime.now()
         start_date = end_date - timedelta(days=days)
         
         # cost explorer
-        ce = boto3.client('ce')
+        if aws_access_key and aws_secret_key:
+            ce = boto3.client(
+                service_name='ce',
+                aws_access_key_id=aws_access_key, 
+                aws_secret_access_key=aws_secret_key, 
+                aws_session_token=aws_session_token
+            )
+        else:
+            ce = boto3.client(
+                service_name='ce'
+            )
 
        # Daily Cost
         daily_response = ce.get_cost_and_usage(
@@ -426,11 +426,10 @@ def daily_cost(state: CostState, config) -> dict:
     daily_costs_df = pd.DataFrame(daily_costs)
     logger.info(f"Daily Costs: {daily_costs_df}")
 
-    value = daily_costs_df.to_string()
-    response_msg.append(value)
-    
-    if chat.debug_mode == "Enable":
-        add_notification(containers, '[response]\n' + value)
+    if response_container:
+        value = daily_costs_df.to_string()
+        response_container.info('[response]\n' + value[:800])
+        response_msg.append(value[:800])
 
     # daily trend cost (line chart)
     fig_line = px.line(
@@ -457,9 +456,10 @@ def daily_cost(state: CostState, config) -> dict:
     body = f"## {task}\n\n{output_images}\n\n{summary}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    response_msg.append(time + body)
-    if chat.debug_mode == "Enable":        
-        add_notification(containers, '[response]\n' + time + body)
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + value[:200])
+        response_msg.append(value[:200])
 
     appendix = state["appendix"] if "appendix" in state else []
     appendix.append(body)
@@ -475,7 +475,8 @@ def generate_insight(state: CostState, config) -> dict:
     prompt_name = "cost_insight"
     request_id = config.get("configurable", {}).get("request_id", "")    
     additional_context = state["additional_context"] if "additional_context" in state else []
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
     
     system_prompt=get_prompt_template(prompt_name)
     logger.info(f"system_prompt: {system_prompt}")
@@ -502,8 +503,8 @@ def generate_insight(state: CostState, config) -> dict:
     daily_costs = json.dumps(state["daily_costs"])
 
     try:
-        if chat.debug_mode == "Enable":
-            containers["status"].info(get_status_msg('generate_insight'))
+        if status_container:
+            status_container.info(get_status_msg('generate_insight'))
             
         response = chain.invoke(
             {
@@ -535,11 +536,10 @@ def generate_insight(state: CostState, config) -> dict:
     logger.info(f"body: {body}")
     chat.updata_object(key, time+body+values, 'prepend')
 
-    value = response.content
-    response_msg.append(value)
-    
-    if chat.debug_mode == "Enable":
-        add_notification(containers, '[response]\n' + value)
+    if response_container:
+        value = response.content
+        response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     iteration = state["iteration"] if "iteration" in state else 0
 
@@ -551,10 +551,11 @@ def generate_insight(state: CostState, config) -> dict:
 def reflect_context(state: CostState, config) -> dict:
     logger.info(f"###### reflect_context ######")
 
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
     
-    if chat.debug_mode == "Enable":
-        containers["status"].info(get_status_msg("reflect_context"))
+    if status_container:
+        status_container.info(get_status_msg("reflect_context"))
 
     # earn reflection from the previous final response    
     result = reflect(state["final_response"])
@@ -567,9 +568,10 @@ def reflect_context(state: CostState, config) -> dict:
     body = f"Reflection: {result['reflection']}\n\nSearch Queries: {result['search_queries']}\n\n"
     chat.updata_object(key, time + body, 'append')
 
-    response_msg.append(body)
-    if chat.debug_mode == "Enable":
-        add_notification(containers, '[response]\n' + body)
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     return {
         "reflection": result
@@ -579,17 +581,18 @@ def mcp_tools(state: CostState, config) -> dict:
     logger.info(f"###### mcp_tools ######")
     draft = state['final_response']
 
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
+    response_container = config.get("configurable", {}).get("response_container", None)
+    key_container = config.get("configurable", {}).get("key_container", None)
+    mcp_servers = config.get("configurable", {}).get("mcp_servers", None)
 
     appendix = state["appendix"] if "appendix" in state else []
 
-    if chat.debug_mode == "Enable":
-        containers["status"].info(get_status_msg("mcp_tools"))
+    if status_container:
+        status_container.info(get_status_msg("mcp_tools"))
 
     global status_msg, response_msg 
-    reflection_result, image_url, status_msg, response_msg = asyncio.run(
-        reflection_agent.run(draft, state["reflection"], containers, status_msg, response_msg)
-    )
+    reflection_result, image_url, status_msg, response_msg = asyncio.run(reflection_agent.run(draft, state["reflection"], mcp_servers, status_container, response_container, key_container, status_msg, response_msg))
     logger.info(f"reflection result: {reflection_result}")
 
     value = ""
@@ -608,8 +611,10 @@ def mcp_tools(state: CostState, config) -> dict:
     value = '\n\n'.join(appendix)
     chat.updata_object(key, time + body + value, 'append')
 
-    if chat.debug_mode == "Enable":
-        add_notification(containers, '[response]\n' + body)
+    if response_container:
+        value = body
+        response_container.info('[response]\n' + value[:500])
+        response_msg.append(value[:500])
 
     additional_context = state["additional_context"] if "additional_context" in state else []
     additional_context.append(reflection_result)
@@ -621,15 +626,14 @@ def mcp_tools(state: CostState, config) -> dict:
 def should_end(state: CostState, config) -> str:
     logger.info(f"###### should_end ######")
     iteration = state["iteration"] if "iteration" in state else 0
-    containers = config.get("configurable", {}).get("containers", None)
+    status_container = config.get("configurable", {}).get("status_container", None)
     
     if iteration > config.get("configurable", {}).get("max_iteration", 1):
         logger.info(f"max iteration reached!")
 
         if chat.debug_mode == "Enable":
-            containers["status"].info(get_status_msg("end"))
+            status_container.info(get_status_msg("end"))
         next = END
-
     else:
         logger.info(f"additional information is required!")
         next = "reflect_context"
@@ -651,9 +655,8 @@ agent = CostAgent(
 
 cost_agent = agent.compile()
 
-def run(request_id: str, containers=None, report_url=None):
+def run(request_id: str, mcp_servers: dict, status_container=None, response_container=None, key_container=None):
     logger.info(f"request_id: {request_id}")
-    logger.info(f"report_url: {report_url}")
 
     global status_msg
     status_msg = []
@@ -661,7 +664,7 @@ def run(request_id: str, containers=None, report_url=None):
     # add plan to report
     key = f"artifacts/{request_id}_plan.md"
     
-    containers["status"].info(get_status_msg("start"))
+    status_container.info(get_status_msg("start"))
     
     # draw a graph
     graph_diagram = cost_agent.get_graph().draw_mermaid_png(
@@ -688,21 +691,21 @@ def run(request_id: str, containers=None, report_url=None):
         "request_id": request_id,
         "recursion_limit": 50,
         "max_iteration": 1,
-        "containers": containers
+        "mcp_servers": mcp_servers,
+        "status_container": status_container,
+        "response_container": response_container,
+        "key_container": key_container
     }
-
-    global index
-    index = 0
 
     value = None
     for output in cost_agent.stream(inputs, config):
         for key, value in output.items():
             logger.info(f"--> key: {key}, value: {value}")
+            # if status_container:
+            #     status_container.info(f"Currently running: {key}")
+            # if response_container and value and "final_response" in value:
+            #     response_container.write(value["final_response"])
     
     logger.info(f"value: {value}")
-       
-    urls = [report_url] if report_url else []
-    urls = asyncio.run(create_final_report(request_id, "AWS 비용 분석", value["final_response"], urls))
-    logger.info(f"urls: {urls}")
 
-    return value["final_response"], urls
+    return value["final_response"]

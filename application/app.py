@@ -417,12 +417,11 @@ if clear_button==False and mode == '비용 분석 Agent':
     st.info(f"report_url: {report_url}")
     
     # show status and response
-    containers = {
-        "status": st.empty(),
-        "notification": [st.empty() for _ in range(500)]
-    }
-
-    response, urls = aws_cost.run(request_id, containers, report_url)
+    status_container = st.empty()
+    response_container = st.empty()
+    key_container = st.empty()
+    
+    response = aws_cost.run(request_id, mcp_servers, status_container, response_container, key_container)
     logger.info(f"response: {response}")
 
     if aws_cost.response_msg:
@@ -432,10 +431,10 @@ if clear_button==False and mode == '비용 분석 Agent':
 
     st.write(response)
 
-    if urls:
-        with st.expander(f"최종 결과"):
-            url_msg = '\n\n'.join(urls)
-            st.markdown(url_msg)
+    # if urls:
+    #     with st.expander(f"최종 결과"):
+    #         url_msg = '\n\n'.join(urls)
+    #         st.markdown(url_msg)
 
     st.session_state.messages.append({"role": "assistant", "content": response})
 

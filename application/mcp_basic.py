@@ -8,7 +8,7 @@ import traceback
 import json
 import re
 import utils
-
+import os
 from pytz import timezone
 from bs4 import BeautifulSoup
 
@@ -20,6 +20,11 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger("mcp-basic")
+
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
 
 def get_current_time(format: str=f"%Y-%m-%d %H:%M:%S")->str:
     """Returns the current date and time in the specified format"""
@@ -80,8 +85,10 @@ def get_weather_info(city: str) -> str:
     logger.info(f"place: {place}")
     
     weather_str: str = f"{city}에 대한 날씨 정보가 없습니다."
-    if utils.weather_api_key: 
-        apiKey = utils.weather_api_key
+
+    weather_api_key = utils.weather_api_key
+    if weather_api_key: 
+        apiKey = weather_api_key
         lang = 'en' 
         units = 'metric' 
         api = f"https://api.openweathermap.org/data/2.5/weather?q={place}&APPID={apiKey}&lang={lang}&units={units}"

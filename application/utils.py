@@ -22,10 +22,18 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp-basic")
 
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
+
 def load_config():
     config = None
     
-    with open("application/config.json", "r", encoding="utf-8") as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(script_dir, "config.json")
+    
+    with open(config_path, "r", encoding="utf-8") as f:
         config = json.load(f)
     
     return config
@@ -34,7 +42,6 @@ config = load_config()
 
 bedrock_region = config['region']
 projectName = config['projectName']
-sharing_url = config['sharing_url']
 
 def get_contents_type(file_name):
     if file_name.lower().endswith((".jpg", ".jpeg")):
@@ -64,19 +71,34 @@ def get_contents_type(file_name):
     return content_type
 
 def load_mcp_env():
-    with open("application/mcp.env", "r", encoding="utf-8") as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mcp_env_path = os.path.join(script_dir, "mcp.env")
+    
+    with open(mcp_env_path, "r", encoding="utf-8") as f:
         mcp_env = json.load(f)
     return mcp_env
 
 def save_mcp_env(mcp_env):
-    with open("application/mcp.env", "w", encoding="utf-8") as f:
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    mcp_env_path = os.path.join(script_dir, "mcp.env")
+    
+    with open(mcp_env_path, "w", encoding="utf-8") as f:
         json.dump(mcp_env, f)
 
 # api key to get weather information in agent
-secretsmanager = boto3.client(
-    service_name='secretsmanager',
-    region_name=bedrock_region
-)
+if aws_access_key and aws_secret_key:
+    secretsmanager = boto3.client(
+        service_name='secretsmanager',
+        region_name=bedrock_region,
+        aws_access_key_id=aws_access_key,
+        aws_secret_access_key=aws_secret_key,
+        aws_session_token=aws_session_token,
+    )
+else:
+    secretsmanager = boto3.client(
+        service_name='secretsmanager',
+        region_name=bedrock_region
+    )
 
 # api key for weather
 weather_api_key = ""

@@ -3,6 +3,7 @@ import json
 import time
 import boto3
 import utils
+import os
 
 from langchain_aws import AmazonKnowledgeBasesRetriever
 from urllib import parse
@@ -20,10 +21,15 @@ logging.basicConfig(
 )
 logger = logging.getLogger("knowledge_base")
 
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
+
 config = utils.load_config()
 
 # variables
-projectName = config["projectName"] if "projectName" in config else "langgraph-nova"
+projectName = config["projectName"] if "projectName" in config else "mcp-rag"
 
 vectorIndexName = projectName
 knowledge_base_name = projectName
@@ -90,7 +96,7 @@ os_client = OpenSearch(
 def is_not_exist(index_name):    
     logger.info(f"index_name: {index_name}")
         
-    if os_client.indices.exists(index_name):
+    if os_client.indices.exists(index=index_name):
         logger.info(f"use exist index: {index_name}")
         return False
     else:
@@ -159,7 +165,7 @@ def initiate_knowledge_base():
 
         try: # create index
             response = os_client.indices.create(
-                vectorIndexName,
+                index=vectorIndexName,
                 body=body
             )
             logger.info(f"opensearch index was created: {response}")
@@ -180,10 +186,20 @@ def initiate_knowledge_base():
     logger.info(f"embeddingModelArn: {embeddingModelArn}")
     logger.info(f"knowledge_base_role: {knowledge_base_role}")
     try: 
-        client = boto3.client(
-            service_name='bedrock-agent',
-            region_name=bedrock_region
-        )   
+        if aws_access_key and aws_secret_key:   
+            client = boto3.client(
+                service_name='bedrock-agent',
+                region_name=bedrock_region,
+                aws_access_key_id=aws_access_key,
+                aws_secret_access_key=aws_secret_key,
+                aws_session_token=aws_session_token,
+            )
+        else:
+            client = boto3.client(
+                service_name='bedrock-agent',
+                region_name=bedrock_region
+            )
+            
         response = client.list_knowledge_bases(
             maxResults=10
         )
@@ -407,11 +423,21 @@ def retrieve_documents_from_knowledge_base(query, top_k):
 def sync_data_source():
     if knowledge_base_id and data_source_id:
         try:
-            client = boto3.client(
-                service_name='bedrock-agent',
-                region_name=bedrock_region                
-            )
-            response = client.start_ingestion_job(
+            if aws_access_key and aws_secret_key:
+                bedrock_client = boto3.client(
+                    service_name='bedrock-agent',
+                    region_name=bedrock_region,
+                    aws_access_key_id=aws_access_key,
+                    aws_secret_access_key=aws_secret_key,
+                    aws_session_token=aws_session_token,
+                )
+            else:
+                bedrock_client = boto3.client(
+                    service_name='bedrock-agent',
+                    region_name=bedrock_region
+                )
+                
+            response = bedrock_client.start_ingestion_job(
                 knowledgeBaseId=knowledge_base_id,
                 dataSourceId=data_source_id
             )

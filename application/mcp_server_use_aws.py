@@ -35,7 +35,10 @@ except Exception as e:
         err_msg = f"Error: {str(e)}"
         logger.info(f"{err_msg}")
 
-aws_region = os.environ.get("AWS_REGION", "us-west-2")    
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
 
 MUTATIVE_OPERATIONS = [
     "create",
@@ -131,7 +134,19 @@ def get_available_operations(service_name: str) -> List[str]:
 
     aws_region = os.environ.get("AWS_REGION", "us-west-2")
     try:
-        client = boto3.client(service_name, region_name=aws_region)
+        if aws_access_key and aws_secret_key:
+            client = boto3.client(
+                service_name, 
+                region_name=aws_region, 
+                aws_access_key_id=aws_access_key, 
+                aws_secret_access_key=aws_secret_key, 
+                aws_session_token=aws_session_token
+            )
+        else:
+            client = boto3.client(
+                service_name, 
+                region_name=aws_region
+            )
         return [op for op in dir(client) if not op.startswith("_")]
     except Exception as e:
         logger.error(f"Error getting operations for service {service_name}: {str(e)}")
@@ -209,7 +224,7 @@ def use_aws(
     service_name: str,
     operation_name: str,
     parameters: Dict[str, Any],
-    region: str = aws_region,
+    region: Optional[str] = None,
     label: str = "AWS Operation Details",
     profile_name: Optional[str] = None
 ) -> Dict[str, Any]:
@@ -258,6 +273,9 @@ def use_aws(
         - For validation errors, the tool attempts to generate the correct input schema
         - All datetime objects are automatically converted to strings for proper JSON serialization
     """
+    if region is None:
+        region = aws_region
+
     console = aws_utils.create()
 
     # Create a panel for AWS Operation Details

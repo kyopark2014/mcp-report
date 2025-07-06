@@ -4,6 +4,7 @@ import traceback
 import logging
 import sys
 import utils
+import os
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -14,18 +15,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger("mcp-rag")
 
-def load_config():
-    config = None
-    try:
-        with open("application/config.json", "r", encoding="utf-8") as f:
-            config = json.load(f)
-            # logger.info(f"config: {config}")
-    except Exception:
-        err_msg = traceback.format_exc()
-        logger.info(f"error message: {err_msg}")    
-    return config
-
-config = load_config()
+config = utils.load_config()
 
 bedrock_region = config["region"] if "region" in config else "us-west-2"
 projectName = config["projectName"] if "projectName" in config else "mcp-rag"
@@ -39,11 +29,25 @@ numberOfDocs = 3
 model_name = "Claude 3.5 Haiku"
 knowledge_base_name = projectName
 
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
+
 def retrieve_knowledge_base(query):
-    lambda_client = boto3.client(
-        service_name='lambda',
-        region_name=bedrock_region
-    )
+    if aws_access_key and aws_secret_key:
+        lambda_client = boto3.client(
+            service_name='lambda',
+            region_name=bedrock_region,
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            aws_session_token=aws_session_token,
+        )
+    else:
+        lambda_client = boto3.client(
+            service_name='lambda',
+            region_name=bedrock_region
+        )
 
     functionName = f"knowledge-base-for-{projectName}"
     logger.info(f"functionName: {functionName}")
