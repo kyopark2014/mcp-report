@@ -172,7 +172,7 @@ with st.sidebar:
         # Change radio to checkbox
         if environment == "user":        
             mcp_options = [
-                "default", "code interpreter", "aws document", "aws cost", "aws cli", 
+                "basic", "code interpreter", "aws document", "aws cost", "aws cli", 
                 "use_aws","aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "perplexity", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "context7", "puppeteer", 
@@ -182,7 +182,7 @@ with st.sidebar:
             ]
         else:
             mcp_options = [ 
-                "default", "code interpreter", "aws document", "aws cost", "aws cli", 
+                "basic", "code interpreter", "aws document", "aws cost", "aws cli", 
                 "use_aws", "aws cloudwatch", "aws storage", "aws diagram", "image generation",
                 "knowledge base", "tavily", "ArXiv", "wikipedia", 
                 "filesystem", "terminal", "text editor", "playwright", "airbnb", 
@@ -190,7 +190,7 @@ with st.sidebar:
                 "사용자 설정"
             ]
         mcp_selections = {}
-        default_selections = ["default", "tavily-manual", "use_aws", "code interpreter", "filesystem"]
+        default_selections = ["basic", "tavily-manual", "use_aws", "filesystem"]
 
         if mode=='Agent' or mode=='Agent (Chat)' or mode=='Planning Agent' or mode=='비용 분석 Agent' or mode=='Biology Agent':
             agent_type = st.radio(
@@ -222,7 +222,7 @@ with st.sidebar:
                     mcp_selections[option] = st.checkbox(option, key=f"mcp_{option}", value=default_value)
         
         if not any(mcp_selections.values()):
-            mcp_selections["default"] = True
+            mcp_selections["basic"] = True
 
         if mcp_selections["사용자 설정"]:
             mcp_info = st.text_area(
