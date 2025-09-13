@@ -10,6 +10,9 @@ import info
 import PyPDF2
 import csv
 import utils
+import strands_agent
+import langgraph_agent
+import mcp_config
 
 from io import BytesIO
 from PIL import Image
@@ -24,7 +27,8 @@ from pydantic.v1 import BaseModel, Field
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.utilities.tavily_search import TavilySearchAPIWrapper
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, AIMessage, ToolMessage, AIMessageChunk
+from langchain_mcp_adapters.client import MultiServerMCPClient
 
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.store.memory import InMemoryStore
@@ -40,55 +44,14 @@ logging.basicConfig(
         logging.StreamHandler(sys.stderr)
     ]
 )
+
 logger = logging.getLogger("chat")
 
-userId = uuid.uuid4().hex
-map_chain = dict() 
-
-checkpointers = dict() 
-memorystores = dict() 
-
-checkpointer = MemorySaver()
-memorystore = InMemoryStore()
-
-checkpointers[userId] = checkpointer
-memorystores[userId] = memorystore
-
 reasoning_mode = 'Disable'
-
-aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
-aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
-aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
-aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
-
-def initiate():
-    global userId
-    global memory_chain, checkpointers, memorystores, checkpointer, memorystore
-
-    userId = uuid.uuid4().hex
-    logger.info(f"userId: {userId}")
-
-    if userId in map_chain:  
-            # memory exists, reuse it
-            memory_chain = map_chain[userId]
-
-            checkpointer = checkpointers[userId]
-            memorystore = memorystores[userId]
-    else: 
-        # memory does not exist, create new one
-        memory_chain = ConversationBufferWindowMemory(memory_key="chat_history", output_key='answer', return_messages=True, k=5)
-        map_chain[userId] = memory_chain
-
-        checkpointer = MemorySaver()
-        memorystore = InMemoryStore()
-
-        checkpointers[userId] = checkpointer
-        memorystores[userId] = memorystore
-
-initiate()
+debug_messages = []  # List to store debug messages
 
 config = utils.load_config()
-logger.info(f"config: {config}")
+print(f"config: {config}")
 
 bedrock_region = config["region"] if "region" in config else "us-west-2"
 projectName = config["projectName"] if "projectName" in config else "mcp-rag"
@@ -143,35 +106,22 @@ model_id = models[0]["model_id"]
 debug_mode = "Enable"
 multi_region = "Disable"
 
-if aws_access_key and aws_secret_key:
-    client = boto3.client(
-        service_name='bedrock-agent',
-        region_name=bedrock_region,
-        aws_access_key_id=aws_access_key,
-        aws_secret_access_key=aws_secret_key,
-        aws_session_token=aws_session_token
-    )  
-else:
-    client = boto3.client(
-        service_name='bedrock-agent',
-        region_name=bedrock_region
-    )
+aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
+aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
+aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
+aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
 
-grading_mode = 'Disable'
 reasoning_mode = 'Disable'
+grading_mode = 'Disable'
+agent_type = 'langgraph'
+user_id = agent_type # for testing
 
-def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode):    
-    global model_name, model_id, model_type, debug_mode, multi_region, reasoning_mode
-    global models, grading_mode
+def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, agentType):    
+    global model_name, model_id, model_type, debug_mode, multi_region, reasoning_mode, grading_mode
+    global models, user_id, agent_type
 
     # load mcp.env    
     mcp_env = utils.load_mcp_env()
-    logger.info(f"mcp_env: {mcp_env}")
-    if not mcp_env:
-        mcp_env = {
-            'multi_region': 'Disable',
-            'grading_mode': 'Disable'
-        }
     
     if model_name != modelName:
         model_name = modelName
@@ -182,8 +132,12 @@ def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode):
         model_type = models[0]["model_type"]
                                 
     if debug_mode != debugMode:
-        debug_mode = debugMode
+        debug_mode = debugMode        
         logger.info(f"debug_mode: {debug_mode}")
+
+    if reasoning_mode != reasoningMode:
+        reasoning_mode = reasoningMode
+        logger.info(f"reasoning_mode: {reasoning_mode}")    
 
     if multi_region != multiRegion:
         multi_region = multiRegion
@@ -195,42 +149,91 @@ def update(modelName, debugMode, multiRegion, reasoningMode, gradingMode):
         logger.info(f"grading_mode: {grading_mode}")            
         mcp_env['grading_mode'] = grading_mode
 
-    if reasoning_mode != reasoningMode:
-        reasoning_mode = reasoningMode
-        logger.info(f"reasoning_mode: {reasoning_mode}")
+    if agent_type != agentType:
+        agent_type = agentType
+        logger.info(f"agent_type: {agent_type}")
+
+        logger.info(f"agent_type changed, update memory variables.")
+        user_id = agent_type
+        logger.info(f"user_id: {user_id}")
+        mcp_env['user_id'] = user_id
+
+    # update mcp.env    
+    utils.save_mcp_env(mcp_env)
+    # logger.info(f"mcp.env updated: {mcp_env}")
+
+def update_mcp_env():
+    mcp_env = utils.load_mcp_env()
+    
+    mcp_env['multi_region'] = multi_region
+    mcp_env['grading_mode'] = grading_mode
+    user_id = agent_type
+    mcp_env['user_id'] = user_id
 
     utils.save_mcp_env(mcp_env)
-    logger.info(f"mcp.env: {mcp_env}")
-    
+    logger.info(f"mcp.env updated: {mcp_env}")
+
+map_chain = dict() 
+checkpointers = dict() 
+memorystores = dict() 
+
+checkpointer = MemorySaver()
+memorystore = InMemoryStore()
+memory_chain = None  # Initialize memory_chain as global variable
+
+sharing_url = config["sharing_url"] if "sharing_url" in config else None
+s3_prefix = "docs"
+capture_prefix = "captures"
+
+def initiate():
+    global memory_chain, checkpointer, memorystore, checkpointers, memorystores
+
+    if user_id in map_chain:  
+        logger.info(f"memory exist. reuse it!")
+        memory_chain = map_chain[user_id]
+
+        checkpointer = checkpointers[user_id]
+        memorystore = memorystores[user_id]
+    else: 
+        logger.info(f"memory not exist. create new memory!")
+        memory_chain = ConversationBufferWindowMemory(memory_key="chat_history", output_key='answer', return_messages=True, k=5)
+        map_chain[user_id] = memory_chain
+
+        checkpointer = MemorySaver()
+        memorystore = InMemoryStore()
+
+        checkpointers[user_id] = checkpointer
+        memorystores[user_id] = memorystore
+
 def clear_chat_history():
-    memory_chain = []
-    map_chain[userId] = memory_chain
+    global memory_chain
+    # Initialize memory_chain if it doesn't exist
+    if memory_chain is None:
+        initiate()
+    
+    if memory_chain and hasattr(memory_chain, 'chat_memory'):
+        memory_chain.chat_memory.clear()
+    else:
+        memory_chain = ConversationBufferWindowMemory(memory_key="chat_history", output_key='answer', return_messages=True, k=5)
+    map_chain[user_id] = memory_chain
 
 def save_chat_history(text, msg):
-    memory_chain.chat_memory.add_user_message(text)
-    if len(msg) > MSG_LENGTH:
-        memory_chain.chat_memory.add_ai_message(msg[:MSG_LENGTH])                          
-    else:
-        memory_chain.chat_memory.add_ai_message(msg) 
+    global memory_chain
+    # Initialize memory_chain if it doesn't exist
+    if memory_chain is None:
+        initiate()
+    
+    if memory_chain and hasattr(memory_chain, 'chat_memory'):
+        memory_chain.chat_memory.add_user_message(text)
+        if len(msg) > MSG_LENGTH:
+            memory_chain.chat_memory.add_ai_message(msg[:MSG_LENGTH])                          
+        else:
+            memory_chain.chat_memory.add_ai_message(msg) 
 
 def create_object(key, body):
     """
     Create an object in S3 and return the URL. If the file already exists, append the new content.
     """
-
-    if aws_access_key and aws_secret_key:
-        s3_client = boto3.client(
-            service_name='s3',
-            region_name=bedrock_region,
-            aws_access_key_id=aws_access_key,
-            aws_secret_access_key=aws_secret_key,
-            aws_session_token=aws_session_token
-        )
-    else:
-        s3_client = boto3.client(
-            service_name='s3',
-            region_name=bedrock_region
-        )
     
     # Content-Type based on file extension
     content_type = 'application/octet-stream'  # default value
@@ -239,12 +242,26 @@ def create_object(key, body):
     elif key.endswith('.md'):
         content_type = 'text/markdown'
     
+    if aws_access_key and aws_secret_key:
+        s3_client = boto3.client(
+            service_name='s3',
+            region_name=bedrock_region,
+            aws_access_key_id=aws_access_key,
+            aws_secret_access_key=aws_secret_key,
+            aws_session_token=aws_session_token,
+        )
+    else:
+        s3_client = boto3.client(
+            service_name='s3',
+            region_name=bedrock_region,
+        )
+        
     s3_client.put_object(
         Bucket=s3_bucket,
         Key=key,
         Body=body,
         ContentType=content_type
-    )    
+    )  
 
 def updata_object(key, body, direction):
     """
@@ -256,14 +273,14 @@ def updata_object(key, body, direction):
             region_name=bedrock_region,
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
-            aws_session_token=aws_session_token
+            aws_session_token=aws_session_token,
         )
     else:
         s3_client = boto3.client(
             service_name='s3',
-            region_name=bedrock_region
+            region_name=bedrock_region,
         )
-    
+
     try:
         # Check if file exists
         try:
@@ -323,6 +340,8 @@ def get_chat(extended_thinking):
         STOP_SEQUENCE = '"\n\n<thinking>", "\n<thinking>", " <thinking>"'
     elif profile['model_type'] == 'claude':
         STOP_SEQUENCE = "\n\nHuman:" 
+    elif profile['model_type'] == 'openai':
+        STOP_SEQUENCE = "" 
                           
     # bedrock   
     if aws_access_key and aws_secret_key:
@@ -349,7 +368,7 @@ def get_chat(extended_thinking):
             )
         )
 
-    if extended_thinking=='Enable':
+    if profile['model_type'] != 'openai' and extended_thinking=='Enable':
         maxReasoningOutputTokens=64000
         logger.info(f"extended_thinking: {extended_thinking}")
         thinking_budget = min(maxOutputTokens, maxReasoningOutputTokens-1000)
@@ -363,7 +382,7 @@ def get_chat(extended_thinking):
             },
             "stop_sequences": [STOP_SEQUENCE]
         }
-    else:
+    elif profile['model_type'] != 'openai' and extended_thinking=='Disable':
         parameters = {
             "max_tokens":maxOutputTokens,     
             "temperature":0.1,
@@ -371,13 +390,20 @@ def get_chat(extended_thinking):
             "top_p":0.9,
             "stop_sequences": [STOP_SEQUENCE]
         }
+    elif profile['model_type'] == 'openai':
+        parameters = {
+            "max_tokens":maxOutputTokens,     
+            "temperature":0.1,
+            "top_k":250,
+            "top_p":0.9,
+        }
 
     chat = ChatBedrock(   # new chat model
         model_id=modelId,
         client=boto3_bedrock, 
         model_kwargs=parameters,
         region_name=bedrock_region
-    )    
+    )
     
     if multi_region=='Enable':
         selected_chat = selected_chat + 1
@@ -397,7 +423,7 @@ def print_doc(i, doc):
     logger.info(f"{i}: {text}, metadata:{doc.metadata}")
 
 def translate_text(text):
-    chat = get_chat(extended_thinking="Disable")
+    chat = get_chat(extended_thinking=reasoning_mode)
 
     system = (
         "You are a helpful assistant that translates {input_language} to {output_language} in <article> tags. Put it in <result> tags."
@@ -433,7 +459,7 @@ def translate_text(text):
     return msg[msg.find('<result>')+8:len(msg)-9] # remove <result> tag
     
 def check_grammer(text):
-    chat = get_chat(extended_thinking="Disable")
+    chat = get_chat(extended_thinking=reasoning_mode)
 
     if isKorean(text)==True:
         system = (
@@ -471,7 +497,7 @@ reference_docs = []
 def tavily_search(query, k):
     docs = []    
     try:
-        tavily_client = TavilyClient(api_key=tavily_key)
+        tavily_client = TavilyClient(api_key=utils.tavily_key)
         response = tavily_client.search(query, max_results=k)
         # print('tavily response: ', response)
             
@@ -555,6 +581,42 @@ def extract_thinking_tag(response, st):
 
     return msg
 
+streaming_index = None
+index = 0
+def add_notification(containers, message):
+    global index
+
+    if index == streaming_index:
+        index += 1
+
+    if containers is not None:
+        containers['notification'][index].info(message)
+    index += 1
+
+def add_response(containers, message):
+    global index
+
+    if index == streaming_index:
+        index += 1
+
+    if containers is not None:
+        containers['notification'][index].markdown(message)
+    index += 1
+
+def update_streaming_result(containers, message, type):
+    global streaming_index
+    streaming_index = index
+
+    if containers is not None:
+        if type == "markdown":
+            containers['notification'][streaming_index].markdown(message)
+        elif type == "info":
+            containers['notification'][streaming_index].info(message)
+
+tool_info_list = dict()
+tool_input_list = dict()
+tool_name_list = dict()
+
 def get_parallel_processing_chat(models, selected):
     global model_type
     profile = models[selected]
@@ -568,6 +630,8 @@ def get_parallel_processing_chat(models, selected):
         STOP_SEQUENCE = '"\n\n<thinking>", "\n<thinking>", " <thinking>"'
     elif profile['model_type'] == 'claude':
         STOP_SEQUENCE = "\n\nHuman:" 
+    elif profile['model_type'] == 'openai':
+        STOP_SEQUENCE = "" 
                           
     # bedrock   
     if aws_access_key and aws_secret_key:
@@ -593,20 +657,29 @@ def get_parallel_processing_chat(models, selected):
                 }
             )
         )
-    parameters = {
-        "max_tokens":maxOutputTokens,     
-        "temperature":0.1,
-        "top_k":250,
-        "top_p":0.9,
-        "stop_sequences": [STOP_SEQUENCE]
-    }
-    # print('parameters: ', parameters)
+
+    if profile['model_type'] != 'openai':
+        parameters = {
+            "max_tokens":maxOutputTokens,     
+            "temperature":0.1,
+            "top_k":250,
+            "top_p":0.9,
+            "stop_sequences": [STOP_SEQUENCE]
+        }
+    else:
+        parameters = {
+            "max_tokens":maxOutputTokens,     
+            "temperature":0.1,
+            "top_k":250,
+            "top_p":0.9,
+        }
 
     chat = ChatBedrock(   # new chat model
         model_id=modelId,
         client=boto3_bedrock, 
         model_kwargs=parameters,
     )        
+    
     return chat
 
 def print_doc(i, doc):
@@ -737,7 +810,9 @@ def grade_documents(question, documents):
 # General Conversation
 #########################################################
 def general_conversation(query):
-    llm = get_chat(extended_thinking="Disable")
+    global memory_chain
+    initiate()  # Initialize memory_chain
+    llm = get_chat(extended_thinking=reasoning_mode)
 
     system = (
         "당신의 이름은 서연이고, 질문에 대해 친절하게 답변하는 사려깊은 인공지능 도우미입니다."
@@ -753,7 +828,10 @@ def general_conversation(query):
         ("human", human)
     ])
                 
-    history = memory_chain.load_memory_variables({})["chat_history"]
+    if memory_chain and hasattr(memory_chain, 'load_memory_variables'):
+        history = memory_chain.load_memory_variables({})["chat_history"]
+    else:
+        history = []
 
     chain = prompt | llm | StrOutputParser()
     try: 
@@ -783,14 +861,14 @@ def upload_to_s3(file_bytes, file_name):
                 region_name=bedrock_region,
                 aws_access_key_id=aws_access_key,
                 aws_secret_access_key=aws_secret_key,
-                aws_session_token=aws_session_token
+                aws_session_token=aws_session_token,
             )
         else:
             s3_client = boto3.client(
                 service_name='s3',
-                region_name=bedrock_region
+                region_name=bedrock_region,
             )
-        
+
         # Generate a unique file name to avoid collisions
         #timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         #unique_id = str(uuid.uuid4())[:8]
@@ -934,7 +1012,7 @@ def load_csv_document(s3_file_name):
     return docs
 
 def get_summary(docs):    
-    llm = get_chat(extended_thinking="Disable")
+    llm = get_chat(extended_thinking=reasoning_mode)
 
     text = ""
     for doc in docs:
@@ -1028,7 +1106,7 @@ def summary_of_code(code, mode):
     prompt = ChatPromptTemplate.from_messages([("system", system), ("human", human)])
     # print('prompt: ', prompt)
     
-    llm = get_chat(extended_thinking="Disable")
+    llm = get_chat(extended_thinking=reasoning_mode)
 
     chain = prompt | llm    
     try: 
@@ -1048,7 +1126,7 @@ def summary_of_code(code, mode):
     return summary
 
 def summary_image(img_base64, instruction):      
-    llm = get_chat(extended_thinking="Disable")
+    llm = get_chat(extended_thinking=reasoning_mode)
 
     if instruction:
         logger.info(f"instruction: {instruction}")
@@ -1089,7 +1167,7 @@ def summary_image(img_base64, instruction):
     return extracted_text
 
 def extract_text(img_base64):    
-    multimodal = get_chat(extended_thinking="Disable")
+    multimodal = get_chat(extended_thinking=reasoning_mode)
     query = "텍스트를 추출해서 markdown 포맷으로 변환하세요. <result> tag를 붙여주세요."
     
     extracted_text = ""
@@ -1122,7 +1200,7 @@ def extract_text(img_base64):
             logger.info(f"error message: {err_msg}")                    
             # raise Exception ("Not able to request to LLM")
     
-    logger.info(f"xtracted_text: {extracted_text}")
+    logger.info(f"Extracted_text: {extracted_text}")
     if len(extracted_text)<10:
         extracted_text = "텍스트를 추출하지 못하였습니다."    
 
@@ -1190,14 +1268,14 @@ def get_summary_of_uploaded_file(file_name, st):
                 region_name=bedrock_region,
                 aws_access_key_id=aws_access_key,
                 aws_secret_access_key=aws_secret_key,
-                aws_session_token=aws_session_token
+                aws_session_token=aws_session_token,
             )
         else:
             s3_client = boto3.client(
                 service_name='s3',
-                region_name=bedrock_region
+                region_name=bedrock_region,
             )
-        
+
         if debug_mode=="Enable":
             status = "이미지를 가져옵니다."
             logger.info(f"status: {status}")
@@ -1212,8 +1290,12 @@ def get_summary_of_uploaded_file(file_name, st):
         width, height = img.size 
         logger.info(f"width: {width}, height: {height}, size: {width*height}")
         
+        # Image resizing and size verification
         isResized = False
-        while(width*height > 5242880):                    
+        max_size = 5 * 1024 * 1024  # 5MB in bytes
+        
+        # Initial resizing (based on pixel count)
+        while(width*height > 2000000):  # Limit to approximately 2M pixels
             width = int(width/2)
             height = int(height/2)
             isResized = True
@@ -1222,9 +1304,30 @@ def get_summary_of_uploaded_file(file_name, st):
         if isResized:
             img = img.resize((width, height))
         
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-        img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+        # Base64 크기 확인 및 추가 리사이징
+        max_attempts = 5
+        for attempt in range(max_attempts):
+            buffer = BytesIO()
+            img.save(buffer, format="PNG", optimize=True)
+            img_bytes = buffer.getvalue()
+            img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+            
+            # Base64 크기 확인 (실제 전송될 크기)
+            base64_size = len(img_base64.encode('utf-8'))
+            logger.info(f"attempt {attempt + 1}: base64_size = {base64_size} bytes")
+            
+            if base64_size <= max_size:
+                break
+            else:
+                # 크기가 여전히 크면 더 작게 리사이징
+                width = int(width * 0.8)
+                height = int(height * 0.8)
+                img = img.resize((width, height))
+                logger.info(f"resizing to {width}x{height} due to size limit")
+        
+        if base64_size > max_size:
+            logger.warning(f"Image still too large after {max_attempts} attempts: {base64_size} bytes")
+            raise Exception(f"이미지 크기가 너무 큽니다. 5MB 이하의 이미지를 사용해주세요.")
                
         # extract text from the image
         if debug_mode=="Enable":
@@ -1384,12 +1487,12 @@ def get_image_summarization(object_name, prompt, st):
             region_name=bedrock_region,
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
-            aws_session_token=aws_session_token
+            aws_session_token=aws_session_token,
         )
     else:
         s3_client = boto3.client(
             service_name='s3',
-            region_name=bedrock_region
+            region_name=bedrock_region,
         )
 
     if debug_mode=="Enable":
@@ -1406,8 +1509,12 @@ def get_image_summarization(object_name, prompt, st):
     width, height = img.size 
     logger.info(f"width: {width}, height: {height}, size: {width*height}")
     
+    # 이미지 리사이징 및 크기 확인
     isResized = False
-    while(width*height > 5242880):                    
+    max_size = 5 * 1024 * 1024  # 5MB in bytes
+    
+    # Initial resizing (based on pixel count)
+    while(width*height > 2000000):  # Limit to approximately 2M pixels
         width = int(width/2)
         height = int(height/2)
         isResized = True
@@ -1416,9 +1523,30 @@ def get_image_summarization(object_name, prompt, st):
     if isResized:
         img = img.resize((width, height))
     
-    buffer = BytesIO()
-    img.save(buffer, format="PNG")
-    img_base64 = base64.b64encode(buffer.getvalue()).decode("utf-8")
+    # Base64 size verification and additional resizing
+    max_attempts = 5
+    for attempt in range(max_attempts):
+        buffer = BytesIO()
+        img.save(buffer, format="PNG", optimize=True)
+        img_bytes = buffer.getvalue()
+        img_base64 = base64.b64encode(img_bytes).decode("utf-8")
+        
+        # Base64 size verification (actual transmission size)
+        base64_size = len(img_base64.encode('utf-8'))
+        logger.info(f"attempt {attempt + 1}: base64_size = {base64_size} bytes")
+        
+        if base64_size <= max_size:
+            break
+        else:
+            # Resize smaller if still too large
+            width = int(width * 0.8)
+            height = int(height * 0.8)
+            img = img.resize((width, height))
+            logger.info(f"resizing to {width}x{height} due to size limit")
+    
+    if base64_size > max_size:
+        logger.warning(f"Image still too large after {max_attempts} attempts: {base64_size} bytes")
+        raise Exception(f"이미지 크기가 너무 큽니다. 5MB 이하의 이미지를 사용해주세요.")
 
     # extract text from the image
     if debug_mode=="Enable":
@@ -1459,12 +1587,13 @@ def get_image_summarization(object_name, prompt, st):
 
     return contents
 
+
 ####################### Bedrock Agent #######################
 # RAG using Lambda
 ############################################################# 
 def get_rag_prompt(text):
     # print("###### get_rag_prompt ######")
-    llm = get_chat(extended_thinking="Disable")
+    llm = get_chat(extended_thinking=reasoning_mode)
     # print('model_type: ', model_type)
     
     if model_type == "nova":
@@ -1532,13 +1661,13 @@ def retrieve_knowledge_base(query):
             region_name=bedrock_region,
             aws_access_key_id=aws_access_key,
             aws_secret_access_key=aws_secret_key,
-            aws_session_token=aws_session_token
+            aws_session_token=aws_session_token,
         )
     else:
         lambda_client = boto3.client(
             service_name='lambda',
-            region_name=bedrock_region
-    )
+            region_name=bedrock_region,
+        )
 
     functionName = f"knowledge-base-for-{projectName}"
     logger.info(f"functionName: {functionName}")
@@ -1549,7 +1678,7 @@ def retrieve_knowledge_base(query):
             'knowledge_base_name': knowledge_base_name,
             'keyword': query,
             'top_k': numberOfDocs,
-            'grading': "Enable",
+            'grading': grading_mode,
             'model_name': model_name,
             'multi_region': multi_region
         }
@@ -1581,12 +1710,13 @@ def get_reference_docs(docs):
                     'from': reference.get("from")
                 },
             )
-    )     
+        )     
     return reference_docs
 
 def run_rag_with_knowledge_base(query, st):
-    global reference_docs
+    global reference_docs, contentList
     reference_docs = []
+    contentList = []
 
     # retrieve
     if debug_mode == "Enable":
@@ -1629,4 +1759,565 @@ def run_rag_with_knowledge_base(query, st):
         msg += ref
     
     return msg, reference_docs
-   
+
+def get_tool_info(tool_name, tool_content):
+    tool_references = []    
+    urls = []
+    content = ""
+
+    # tavily
+    if isinstance(tool_content, str) and "Title:" in tool_content and "URL:" in tool_content and "Content:" in tool_content:
+        logger.info("Tavily parsing...")
+        items = tool_content.split("\n\n")
+        for i, item in enumerate(items):
+            # logger.info(f"item[{i}]: {item}")
+            if "Title:" in item and "URL:" in item and "Content:" in item:
+                try:
+                    title_part = item.split("Title:")[1].split("URL:")[0].strip()
+                    url_part = item.split("URL:")[1].split("Content:")[0].strip()
+                    content_part = item.split("Content:")[1].strip().replace("\n", "")
+                    
+                    logger.info(f"title_part: {title_part}")
+                    logger.info(f"url_part: {url_part}")
+                    logger.info(f"content_part: {content_part}")
+
+                    content += f"{content_part}\n\n"
+                    
+                    tool_references.append({
+                        "url": url_part,
+                        "title": title_part,
+                        "content": content_part[:100] + "..." if len(content_part) > 100 else content_part
+                    })
+                except Exception as e:
+                    logger.info(f"Parsing error: {str(e)}")
+                    continue                
+
+    # OpenSearch
+    elif tool_name == "SearchIndexTool": 
+        if ":" in tool_content:
+            extracted_json_data = tool_content.split(":", 1)[1].strip()
+            try:
+                json_data = json.loads(extracted_json_data)
+                # logger.info(f"extracted_json_data: {extracted_json_data[:200]}")
+            except json.JSONDecodeError:
+                logger.info("JSON parsing error")
+                json_data = {}
+        else:
+            json_data = {}
+        
+        if "hits" in json_data:
+            hits = json_data["hits"]["hits"]
+            if hits:
+                logger.info(f"hits[0]: {hits[0]}")
+
+            for hit in hits:
+                text = hit["_source"]["text"]
+                metadata = hit["_source"]["metadata"]
+                
+                content += f"{text}\n\n"
+
+                filename = metadata["name"].split("/")[-1]
+                # logger.info(f"filename: {filename}")
+                
+                content_part = text.replace("\n", "")
+                tool_references.append({
+                    "url": metadata["url"], 
+                    "title": filename,
+                    "content": content_part[:100] + "..." if len(content_part) > 100 else content_part
+                })
+                
+        logger.info(f"content: {content}")
+        
+    # Knowledge Base
+    elif tool_name == "QueryKnowledgeBases": 
+        try:
+            # Handle case where tool_content contains multiple JSON objects
+            if tool_content.strip().startswith('{'):
+                # Parse each JSON object individually
+                json_objects = []
+                current_pos = 0
+                brace_count = 0
+                start_pos = -1
+                
+                for i, char in enumerate(tool_content):
+                    if char == '{':
+                        if brace_count == 0:
+                            start_pos = i
+                        brace_count += 1
+                    elif char == '}':
+                        brace_count -= 1
+                        if brace_count == 0 and start_pos != -1:
+                            try:
+                                json_obj = json.loads(tool_content[start_pos:i+1])
+                                # logger.info(f"json_obj: {json_obj}")
+                                json_objects.append(json_obj)
+                            except json.JSONDecodeError:
+                                logger.info(f"JSON parsing error: {tool_content[start_pos:i+1][:100]}")
+                            start_pos = -1
+                
+                json_data = json_objects
+            else:
+                # Try original method
+                json_data = json.loads(tool_content)                
+            # logger.info(f"json_data: {json_data}")
+
+            # Build content
+            if isinstance(json_data, list):
+                for item in json_data:
+                    if isinstance(item, dict) and "content" in item:
+                        content_text = item["content"].get("text", "")
+                        content += content_text + "\n\n"
+
+                        uri = "" 
+                        if "location" in item:
+                            if "s3Location" in item["location"]:
+                                uri = item["location"]["s3Location"]["uri"]
+                                # logger.info(f"uri (list): {uri}")
+                                ext = uri.split(".")[-1]
+
+                                # if ext is an image 
+                                url = sharing_url + "/" + s3_prefix + "/" + uri.split("/")[-1]
+                                if ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "ico", "webp"]:
+                                    url = sharing_url + "/" + capture_prefix + "/" + uri.split("/")[-1]
+                                logger.info(f"url: {url}")
+                                
+                                tool_references.append({
+                                    "url": url, 
+                                    "title": uri.split("/")[-1],
+                                    "content": content_text[:100] + "..." if len(content_text) > 100 else content_text
+                                })          
+                
+        except json.JSONDecodeError as e:
+            logger.info(f"JSON parsing error: {e}")
+            json_data = {}
+            content = tool_content  # Use original content if parsing fails
+
+        logger.info(f"content: {content}")
+        logger.info(f"tool_references: {tool_references}")
+
+    # aws document
+    elif tool_name == "search_documentation":
+        try:
+            json_data = json.loads(tool_content)
+            for item in json_data:
+                logger.info(f"item: {item}")
+                
+                if isinstance(item, str):
+                    try:
+                        item = json.loads(item)
+                    except json.JSONDecodeError:
+                        logger.info(f"Failed to parse item as JSON: {item}")
+                        continue
+                
+                if isinstance(item, dict) and 'url' in item and 'title' in item:
+                    url = item['url']
+                    title = item['title']
+                    content_text = item['context'][:100] + "..." if len(item['context']) > 100 else item['context']
+                    tool_references.append({
+                        "url": url,
+                        "title": title,
+                        "content": content_text
+                    })
+                else:
+                    logger.info(f"Invalid item format: {item}")
+                    
+        except json.JSONDecodeError:
+            logger.info(f"JSON parsing error: {tool_content}")
+            pass
+
+        logger.info(f"content: {content}")
+        logger.info(f"tool_references: {tool_references}")
+            
+    # ArXiv
+    elif tool_name == "search_papers" and "papers" in tool_content:
+        try:
+            json_data = json.loads(tool_content)
+
+            papers = json_data['papers']
+            for paper in papers:
+                url = paper['url']
+                title = paper['title']
+                abstract = paper['abstract'].replace("\n", "")
+                content_text = abstract[:100] + "..." if len(abstract) > 100 else abstract
+                content += f"{content_text}\n\n"
+                logger.info(f"url: {url}, title: {title}, content: {content_text}")
+
+                tool_references.append({
+                    "url": url,
+                    "title": title,
+                    "content": content_text
+                })
+        except json.JSONDecodeError:
+            logger.info(f"JSON parsing error: {tool_content}")
+            pass
+
+        logger.info(f"content: {content}")
+        logger.info(f"tool_references: {tool_references}")
+
+    # aws-knowledge
+    elif tool_name == "aws___read_documentation":
+        logger.info(f"#### {tool_name} ####")
+        if isinstance(tool_content, dict):
+            json_data = tool_content
+        elif isinstance(tool_content, list):
+            json_data = tool_content
+        else:
+            json_data = json.loads(tool_content)
+        
+        logger.info(f"json_data: {json_data}")
+
+        if "content" in json_data:
+            content = json_data["content"]
+            logger.info(f"content: {content}")
+            if "result" in content:
+                result = content["result"]
+                logger.info(f"result: {result}")
+                
+        payload = {}
+        if "response" in json_data:
+            payload = json_data["response"]["payload"]
+        elif "content" in json_data:
+            payload = json_data
+
+        if "content" in payload:
+            payload_content = payload["content"]
+            if "result" in payload_content:
+                result = payload_content["result"]
+                logger.info(f"result: {result}")
+                if isinstance(result, str) and "AWS Documentation from" in result:
+                    logger.info(f"Processing AWS Documentation format: {result}")
+                    try:
+                        # Extract URL from "AWS Documentation from https://..."
+                        url_start = result.find("https://")
+                        if url_start != -1:
+                            # Find the colon after the URL (not inside the URL)
+                            url_end = result.find(":", url_start)
+                            if url_end != -1:
+                                # Check if the colon is part of the URL or the separator
+                                url_part = result[url_start:url_end]
+                                # If the colon is immediately after the URL, use it as separator
+                                if result[url_end:url_end+2] == ":\n":
+                                    url = url_part
+                                    content_start = url_end + 2  # Skip the colon and newline
+                                else:
+                                    # Try to find the actual URL end by looking for space or newline
+                                    space_pos = result.find(" ", url_start)
+                                    newline_pos = result.find("\n", url_start)
+                                    if space_pos != -1 and newline_pos != -1:
+                                        url_end = min(space_pos, newline_pos)
+                                    elif space_pos != -1:
+                                        url_end = space_pos
+                                    elif newline_pos != -1:
+                                        url_end = newline_pos
+                                    else:
+                                        url_end = len(result)
+                                    
+                                    url = result[url_start:url_end]
+                                    content_start = url_end + 1
+                                
+                                # Remove trailing colon from URL if present
+                                if url.endswith(":"):
+                                    url = url[:-1]
+                                
+                                # Extract content after the URL
+                                if content_start < len(result):
+                                    content_text = result[content_start:].strip()
+                                    # Truncate content for display
+                                    display_content = content_text[:100] + "..." if len(content_text) > 100 else content_text
+                                    display_content = display_content.replace("\n", "")
+                                    
+                                    tool_references.append({
+                                        "url": url,
+                                        "title": "AWS Documentation",
+                                        "content": display_content
+                                    })
+                                    content += content_text + "\n\n"
+                                    logger.info(f"Extracted URL: {url}")
+                                    logger.info(f"Extracted content length: {len(content_text)}")
+                    except Exception as e:
+                        logger.error(f"Error parsing AWS Documentation format: {e}")
+        logger.info(f"content: {content}")
+        logger.info(f"tool_references: {tool_references}")
+
+    else:        
+        try:
+            if isinstance(tool_content, dict):
+                json_data = tool_content
+            elif isinstance(tool_content, list):
+                json_data = tool_content
+            else:
+                json_data = json.loads(tool_content)
+            
+            logger.info(f"json_data: {json_data}")
+            if isinstance(json_data, dict) and "path" in json_data:  # path
+                path = json_data["path"]
+                if isinstance(path, list):
+                    for url in path:
+                        urls.append(url)
+                else:
+                    urls.append(path)            
+
+            if isinstance(json_data, dict):
+                for item in json_data:
+                    logger.info(f"item: {item}")
+                    if "reference" in item and "contents" in item:
+                        url = item["reference"]["url"]
+                        title = item["reference"]["title"]
+                        content_text = item["contents"][:100] + "..." if len(item["contents"]) > 100 else item["contents"]
+                        tool_references.append({
+                            "url": url,
+                            "title": title,
+                            "content": content_text
+                        })
+            else:
+                logger.info(f"json_data is not a dict: {json_data}")
+
+                for item in json_data:
+                    if "reference" in item and "contents" in item:
+                        url = item["reference"]["url"]
+                        title = item["reference"]["title"]
+                        content_text = item["contents"][:100] + "..." if len(item["contents"]) > 100 else item["contents"]
+                        tool_references.append({
+                            "url": url,
+                            "title": title,
+                            "content": content_text
+                        })
+                
+            logger.info(f"tool_references: {tool_references}")
+
+        except json.JSONDecodeError:
+            pass
+
+    return content, urls, tool_references
+
+async def run_langgraph_agent(query, mcp_servers, history_mode, containers):
+    global index, streaming_index
+    index = 0
+
+    image_url = []
+    references = []
+
+    mcp_json = mcp_config.load_selected_config(mcp_servers)
+    logger.info(f"mcp_json: {mcp_json}")
+
+    server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
+    logger.info(f"server_params: {server_params}")    
+
+    client = MultiServerMCPClient(server_params)
+    tools = await client.get_tools()
+
+    tool_list = [tool.name for tool in tools]
+    logger.info(f"tool_list: {tool_list}")
+
+    if history_mode == "Enable":
+        app = langgraph_agent.buildChatAgentWithHistory(tools)
+        config = {
+            "recursion_limit": 50,
+            "configurable": {"thread_id": user_id},
+            "tools": tools,
+            "system_prompt": None
+        }
+    else:
+        app = langgraph_agent.buildChatAgent(tools)
+        config = {
+            "recursion_limit": 50,
+            "configurable": {"thread_id": user_id},
+            "tools": tools,
+            "system_prompt": None
+        }        
+    
+    inputs = {
+        "messages": [HumanMessage(content=query)]
+    }
+            
+    result = ""
+    tool_used = False  # Track if tool was used
+    tool_name = toolUseId = ""
+    async for stream in app.astream(inputs, config, stream_mode="messages"):
+        if isinstance(stream[0], AIMessageChunk):
+            message = stream[0]    
+            input = {}        
+            if isinstance(message.content, list):
+                for content_item in message.content:
+                    if isinstance(content_item, dict):
+                        if content_item.get('type') == 'text':
+                            text_content = content_item.get('text', '')
+                            # logger.info(f"text_content: {text_content}")
+                            
+                            # If tool was used, start fresh result
+                            if tool_used:
+                                result = text_content
+                                tool_used = False
+                            else:
+                                result += text_content
+                                
+                            # logger.info(f"result: {result}")                
+                            update_streaming_result(containers, result, "markdown")
+
+                        elif content_item.get('type') == 'tool_use':
+                            logger.info(f"content_item: {content_item}")      
+                            if 'id' in content_item and 'name' in content_item:
+                                toolUseId = content_item.get('id', '')
+                                tool_name = content_item.get('name', '')
+                                logger.info(f"tool_name: {tool_name}, toolUseId: {toolUseId}")
+                                streaming_index = index                                                                                                                         
+                                index += 1
+                                                                    
+                            if 'partial_json' in content_item:
+                                partial_json = content_item.get('partial_json', '')
+                                logger.info(f"partial_json: {partial_json}")
+                                
+                                if toolUseId not in tool_input_list:
+                                    tool_input_list[toolUseId] = ""                                
+                                tool_input_list[toolUseId] += partial_json
+                                input = tool_input_list[toolUseId]
+                                logger.info(f"input: {input}")
+
+                                logger.info(f"tool_name: {tool_name}, input: {input}, toolUseId: {toolUseId}")
+                                update_streaming_result(containers, f"Tool: {tool_name}, Input: {input}", "info")
+                        
+        elif isinstance(stream[0], ToolMessage):
+            message = stream[0]
+            logger.info(f"ToolMessage: {message.name}, {message.content}")
+            tool_name = message.name
+            toolResult = message.content
+            toolUseId = message.tool_call_id
+            logger.info(f"toolResult: {toolResult}, toolUseId: {toolUseId}")
+            add_notification(containers, f"Tool Result: {toolResult}")
+            tool_used = True
+            
+            content, urls, refs = get_tool_info(tool_name, toolResult)
+            if refs:
+                for r in refs:
+                    references.append(r)
+                logger.info(f"refs: {refs}")
+            if urls:
+                for url in urls:
+                    image_url.append(url)
+                logger.info(f"urls: {urls}")
+
+            if content:
+                logger.info(f"content: {content}")        
+    
+    if not result:
+        result = "답변을 찾지 못하였습니다."        
+    logger.info(f"result: {result}")
+
+    if references:
+        ref = "\n\n### Reference\n"
+        for i, reference in enumerate(references):
+            page_content = reference['content'][:100].replace("\n", "")
+            ref += f"{i+1}. [{reference['title']}]({reference['url']}), {page_content}...\n"    
+        result += ref
+    
+    if containers is not None:
+        containers['notification'][index].markdown(result)
+    
+    return result, image_url
+
+async def run_strands_agent(query, strands_tools, mcp_servers, history_mode, containers):
+    global tool_list, index
+    tool_list = []
+    index = 0
+
+    image_url = []
+    references = []
+
+    # initiate agent
+    await strands_agent.initiate_agent(
+        system_prompt=None, 
+        strands_tools=strands_tools, 
+        mcp_servers=mcp_servers, 
+        historyMode=history_mode
+    )
+    logger.info(f"tool_list: {tool_list}")    
+
+    # run agent    
+    final_result = current = ""
+    with strands_agent.mcp_manager.get_active_clients(mcp_servers) as _:
+        agent_stream = strands_agent.agent.stream_async(query)
+        
+        async for event in agent_stream:
+            text = ""            
+            if "data" in event:
+                text = event["data"]
+                logger.info(f"[data] {text}")
+                current += text
+                update_streaming_result(containers, current, "markdown")
+
+            elif "result" in event:
+                final = event["result"]                
+                message = final.message
+                if message:
+                    content = message.get("content", [])
+                    result = content[0].get("text", "")
+                    logger.info(f"[result] {result}")
+                    final_result = result
+
+            elif "current_tool_use" in event:
+                current_tool_use = event["current_tool_use"]
+                logger.info(f"current_tool_use: {current_tool_use}")
+                name = current_tool_use.get("name", "")
+                input = current_tool_use.get("input", "")
+                toolUseId = current_tool_use.get("toolUseId", "")
+
+                text = f"name: {name}, input: {input}"
+                logger.info(f"[current_tool_use] {text}")
+
+                if toolUseId not in tool_info_list: # new tool info
+                    index += 1
+                    current = ""
+                    logger.info(f"new tool info: {toolUseId} -> {index}")
+                    tool_info_list[toolUseId] = index
+                    tool_name_list[toolUseId] = name
+                    add_notification(containers, f"Tool: {name}, Input: {input}")
+                else: # overwrite tool info if already exists
+                    logger.info(f"overwrite tool info: {toolUseId} -> {tool_info_list[toolUseId]}")
+                    containers['notification'][tool_info_list[toolUseId]].info(f"Tool: {name}, Input: {input}")
+
+            elif "message" in event:
+                message = event["message"]
+                logger.info(f"[message] {message}")
+
+                if "content" in message:
+                    content = message["content"]
+                    logger.info(f"tool content: {content}")
+                    if "toolResult" in content[0]:
+                        toolResult = content[0]["toolResult"]
+                        toolUseId = toolResult["toolUseId"]
+                        toolContent = toolResult["content"]
+                        toolResult = toolContent[0].get("text", "")
+                        tool_name = tool_name_list[toolUseId]
+                        logger.info(f"[toolResult] {toolResult}, [toolUseId] {toolUseId}")
+                        add_notification(containers, f"Tool Result: {str(toolResult)}")
+
+                        content, urls, refs = get_tool_info(tool_name, toolResult)
+                        if refs:
+                            for r in refs:
+                                references.append(r)
+                            logger.info(f"refs: {refs}")
+                        if urls:
+                            for url in urls:
+                                image_url.append(url)
+                            logger.info(f"urls: {urls}")
+
+                        if content:
+                            logger.info(f"content: {content}")                
+                
+            elif "contentBlockDelta" or "contentBlockStop" or "messageStop" or "metadata" in event:
+                pass
+
+            else:
+                logger.info(f"event: {event}")
+
+        if references:
+            ref = "\n\n### Reference\n"
+            for i, reference in enumerate(references):
+                content = reference['content'][:100].replace("\n", "")
+                ref += f"{i+1}. [{reference['title']}]({reference['url']}), {content}...\n"    
+            final_result += ref
+
+        if containers is not None:
+            containers['notification'][index].markdown(final_result)
+
+    return final_result, image_url

@@ -4,10 +4,10 @@ import contextlib
 import mcp_config
 import logging
 import sys
-import json
 import utils
+import boto3
+import json
 
-from urllib import parse
 from contextlib import contextmanager
 from typing import Dict, List, Optional
 from strands.models import BedrockModel
@@ -16,7 +16,10 @@ from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands import Agent
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
+from mcp.client.streamable_http import streamablehttp_client
 from botocore.config import Config
+from speak import speak
+from urllib import parse
 
 logging.basicConfig(
     level=logging.INFO,  # Default to INFO level
@@ -27,17 +30,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger("strands-agent")
 
-tool_list = []
-
-update_required = False
 initiated = False
 strands_tools = []
 mcp_servers = []
 
-status_msg = []
-response_msg = []
-references = []
-image_url = []
+tool_list = []
+
+memory_id = actor_id = session_id = namespace = None
 
 s3_prefix = "docs"
 capture_prefix = "captures"
@@ -45,16 +44,8 @@ capture_prefix = "captures"
 selected_strands_tools = []
 selected_mcp_servers = []
 
-index = 0
-def add_notification(containers, message):
-    global index
-    containers['notification'][index].info(message)
-    index += 1
-
-def add_response(containers, message):
-    global index
-    containers['notification'][index].markdown(message)
-    index += 1
+history_mode = "Disable"
+aws_region = utils.bedrock_region
 
 status_msg = []
 def get_status_msg(status):
@@ -76,6 +67,8 @@ def get_model():
         STOP_SEQUENCE = '"\n\n<thinking>", "\n<thinking>", " <thinking>"'
     elif chat.model_type == 'claude':
         STOP_SEQUENCE = "\n\nHuman:" 
+    elif chat.model_type == 'openai':
+        STOP_SEQUENCE = "" 
 
     if chat.model_type == 'claude':
         maxOutputTokens = 4096 # 4k
@@ -89,7 +82,6 @@ def get_model():
     aws_access_key = os.environ.get('AWS_ACCESS_KEY_ID')
     aws_secret_key = os.environ.get('AWS_SECRET_ACCESS_KEY')
     aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
-    aws_region = os.environ.get('AWS_DEFAULT_REGION', 'ap-northeast-2')
 
     # Bedrock 클라이언트 설정
     bedrock_config = Config(
@@ -98,9 +90,7 @@ def get_model():
         retries=dict(max_attempts=3, mode="adaptive"),
     )
 
-    # 자격 증명이 있는 경우 Bedrock 클라이언트 생성
     if aws_access_key and aws_secret_key:
-        import boto3
         bedrock_client = boto3.client(
             'bedrock-runtime',
             region_name=aws_region,
@@ -110,15 +100,13 @@ def get_model():
             config=bedrock_config
         )
     else:
-        # 기본 자격 증명 사용
-        import boto3
         bedrock_client = boto3.client(
             'bedrock-runtime',
             region_name=aws_region,
             config=bedrock_config
         )
 
-    if chat.reasoning_mode=='Enable':
+    if chat.reasoning_mode=='Enable' and chat.model_type != 'openai':
         model = BedrockModel(
             client=bedrock_client,
             model_id=chat.model_id,
@@ -132,7 +120,7 @@ def get_model():
                 }
             },
         )
-    else:
+    elif chat.reasoning_mode=='Disable' and chat.model_type != 'openai':
         model = BedrockModel(
             client=bedrock_client,
             model_id=chat.model_id,
@@ -146,6 +134,12 @@ def get_model():
                 }
             }
         )
+    elif chat.model_type == 'openai':
+        model = BedrockModel(
+            model=chat.model_id,
+            region=aws_region,
+            streaming=True
+        )
     return model
 
 conversation_manager = SlidingWindowConversationManager(
@@ -156,13 +150,69 @@ class MCPClientManager:
     def __init__(self):
         self.clients: Dict[str, MCPClient] = {}
         self.client_configs: Dict[str, dict] = {}  # Store client configurations
+    
+    def _refresh_bearer_token_and_update_client(self, client_name: str) -> bool:
+        """Refresh bearer token and update client configuration"""
+        try:
+            # Load the original config to get Cognito settings
+            config = mcp_config.load_config(client_name)
+            if not config:
+                logger.error(f"Failed to load config for {client_name}")
+                return False
+            
+            # Get fresh bearer token from Cognito
+            bearer_token = mcp_config.create_cognito_bearer_token(utils.load_config())
+            if not bearer_token:
+                logger.error("Failed to get fresh bearer token from Cognito")
+                return False
+            
+            logger.info("Successfully obtained fresh bearer token")
+            
+            # Update the client configuration with new bearer token
+            if client_name in self.client_configs:
+                client_config = self.client_configs[client_name]
+                if 'headers' in client_config:
+                    client_config['headers']['Authorization'] = f"Bearer {bearer_token}"
+                    logger.info(f"Updated bearer token for {client_name}")
+                    
+                    # Save the new bearer token
+                    secret_name = config.get('secret_name')
+                    if secret_name:
+                        mcp_config.save_bearer_token(secret_name, bearer_token)
+                    
+                    # Remove the old client to force recreation
+                    if client_name in self.clients:
+                        del self.clients[client_name]
+                    
+                    logger.info(f"Successfully refreshed bearer token for {client_name}")
+                    return True
+                else:
+                    logger.error(f"No headers found in client config for {client_name}")
+                    return False
+            else:
+                logger.error(f"No client config found for {client_name}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Error during bearer token refresh for {client_name}: {e}")
+            return False
         
-    def add_client(self, name: str, command: str, args: List[str], env: dict[str, str] = {}) -> None:
+    def add_stdio_client(self, name: str, command: str, args: List[str], env: dict[str, str] = {}) -> None:
         """Add a new MCP client configuration (lazy initialization)"""
         self.client_configs[name] = {
+            "transport": "stdio",
             "command": command,
             "args": args,
             "env": env
+        }
+        logger.info(f"Stored configuration for MCP client: {name}")
+    
+    def add_streamable_client(self, name: str, url: str, headers: dict[str, str] = {}) -> None:
+        """Add a new MCP client configuration (lazy initialization)"""
+        self.client_configs[name] = {
+            "transport": "streamable_http",
+            "url": url,
+            "headers": headers
         }
         logger.info(f"Stored configuration for MCP client: {name}")
     
@@ -177,13 +227,41 @@ class MCPClientManager:
             config = self.client_configs[name]
             logger.info(f"Creating MCP client for {name} with config: {config}")
             try:
-                self.clients[name] = MCPClient(lambda: stdio_client(
-                    StdioServerParameters(
-                        command=config["command"], 
-                        args=config["args"], 
-                        env=config["env"]
-                    )
-                ))
+                if "transport" in config and config["transport"] == "streamable_http":
+                    try:
+                        self.clients[name] = MCPClient(lambda: streamablehttp_client(
+                            url=config["url"], 
+                            headers=config["headers"]
+                        ))
+                    except Exception as http_error:
+                        logger.error(f"Failed to create streamable HTTP client for {name}: {http_error}")
+                        if "403" in str(http_error) or "Forbidden" in str(http_error) or "MCPClientInitializationError" in str(http_error) or "client initialization failed" in str(http_error):
+                            logger.error(f"Authentication failed for {name}. Attempting to refresh bearer token...")
+                            
+                            # Try to refresh bearer token and retry
+                            if self._refresh_bearer_token_and_update_client(name):
+                                # Retry with new bearer token
+                                logger.info("Retrying MCP client creation with fresh bearer token...")
+                                config = self.client_configs[name]
+                                self.clients[name] = MCPClient(lambda: streamablehttp_client(
+                                    url=config["url"], 
+                                    headers=config["headers"]
+                                ))
+                                
+                                logger.info(f"Successfully created MCP client for {name} after bearer token refresh")
+                            else:
+                                raise http_error
+                        else:
+                            raise http_error
+                else:
+                    self.clients[name] = MCPClient(lambda: stdio_client(
+                        StdioServerParameters(
+                            command=config["command"], 
+                            args=config["args"], 
+                            env=config["env"]
+                        )
+                    ))
+                
                 logger.info(f"Successfully created MCP client: {name}")
             except Exception as e:
                 logger.error(f"Failed to create MCP client {name}: {e}")
@@ -192,8 +270,21 @@ class MCPClientManager:
                 logger.error(f"Traceback: {traceback.format_exc()}")
                 return None
         else:
-            logger.info(f"Reusing existing MCP client: {name}")
-                
+            # Check if client is already running and stop it if necessary
+            try:
+                client = self.clients[name]
+                if hasattr(client, '_session') and client._session is not None:
+                    logger.info(f"Stopping existing session for client: {name}")
+                    try:
+                        client.stop()
+                    except Exception as stop_error:
+                        # Ignore 404 errors during session termination (common with AWS Bedrock AgentCore)
+                        if "404" in str(stop_error) or "Not Found" in str(stop_error):
+                            logger.info(f"Session already terminated for {name} (404 expected)")
+                        else:
+                            logger.warning(f"Error stopping existing client session for {name}: {stop_error}")
+            except Exception as e:
+                logger.warning(f"Error checking client session for {name}: {e}")
         return self.clients[name]
     
     def remove_client(self, name: str) -> None:
@@ -212,13 +303,74 @@ class MCPClientManager:
             for client_name in active_clients:
                 client = self.get_client(client_name)
                 if client:
+                    # Ensure client is not already running
+                    try:
+                        if hasattr(client, '_session') and client._session is not None:
+                            logger.info(f"Stopping existing session for client: {client_name}")
+                            try:
+                                client.stop()
+                            except Exception as stop_error:
+                                # Ignore 404 errors during session termination (common with AWS Bedrock AgentCore)
+                                if "404" in str(stop_error) or "Not Found" in str(stop_error):
+                                    logger.info(f"Session already terminated for {client_name} (404 expected)")
+                                else:
+                                    logger.warning(f"Error stopping existing session for {client_name}: {stop_error}")
+                    except Exception as e:
+                        logger.warning(f"Error checking existing session for {client_name}: {e}")
+                    
                     active_contexts.append(client)
 
             # logger.info(f"active_contexts: {active_contexts}")
             if active_contexts:
                 with contextlib.ExitStack() as stack:
                     for client in active_contexts:
-                        stack.enter_context(client)
+                        try:
+                            stack.enter_context(client)
+                        except Exception as e:
+                            logger.error(f"Error entering context for client: {e}")
+                            
+                            # Check if this is a 403 error and try to refresh bearer token
+                            logger.info(f"Error details: {type(e).__name__}: {str(e)}")
+                            if "403" in str(e) or "Forbidden" in str(e) or "MCPClientInitializationError" in str(e) or "client initialization failed" in str(e):
+                                logger.info("403 error detected, attempting to refresh bearer token...")
+                                try:
+                                    # Find the client name from the active_clients list
+                                    client_name = None
+                                    for name, client_obj in mcp_manager.clients.items():
+                                        if client_obj == client:
+                                            client_name = name
+                                            break
+                                    
+                                    if client_name:
+                                        if self._refresh_bearer_token_and_update_client(client_name):
+                                            # Retry with new bearer token
+                                            logger.info("Retrying client creation with fresh bearer token...")
+                                            # Remove the old client completely and create a new one
+                                            if client_name in self.clients:
+                                                del self.clients[client_name]
+                                            new_client = self.get_client(client_name)
+                                            if new_client:
+                                                stack.enter_context(new_client)
+                                                logger.info(f"Successfully created client for {client_name} after bearer token refresh")
+                                                continue
+                                    
+                                except Exception as retry_error:
+                                    logger.error(f"Error during bearer token refresh and retry: {retry_error}")
+                            
+                            # Try to stop the client if it's already running
+                            try:
+                                if hasattr(client, 'stop'):
+                                    try:
+                                        client.stop()
+                                    except Exception as stop_error:
+                                        # Ignore 404 errors during session termination
+                                        if "404" in str(stop_error) or "Not Found" in str(stop_error):
+                                            logger.info(f"Session already terminated (404 expected)")
+                                        else:
+                                            logger.warning(f"Error stopping client: {stop_error}")
+                            except:
+                                pass
+                            raise
                     yield
             else:
                 yield
@@ -247,32 +399,59 @@ def init_mcp_clients(mcp_servers: list):
         server_key = next(iter(config["mcpServers"]))
         server_config = config["mcpServers"][server_key]
         
-        name = tool  # Use tool name as client name
-        command = server_config["command"]
-        args = server_config["args"]
-        env = server_config.get("env", {})  # Use empty dict if env is not present
-        
-        logger.info(f"Adding MCP client - name: {name}, command: {command}, args: {args}, env: {env}")        
+        if "type" in server_config and server_config["type"] == "streamable_http":
+            name = tool  # Use tool name as client name
+            url = server_config["url"]
+            headers = server_config.get("headers", {})                
+            logger.info(f"Adding MCP client - name: {name}, url: {url}, headers: {headers}")
+                
+            try:                
+                mcp_manager.add_streamable_client(name, url, headers)
+                logger.info(f"Successfully added streamable MCP client for {name}")
+            except Exception as e:
+                logger.error(f"Failed to add streamable MCP client for {name}: {e}")
+                
+                # Try to refresh bearer token and retry for 403 errors
+                if "403" in str(e) or "Forbidden" in str(e) or "MCPClientInitializationError" in str(e) or "client initialization failed" in str(e):
+                    logger.info("Attempting to refresh bearer token and retry...")
+                    if mcp_manager._refresh_bearer_token_and_update_client(name):
+                        # Retry with new bearer token
+                        logger.info("Retrying MCP client creation with fresh bearer token...")
+                        mcp_manager.add_streamable_client(name, url, mcp_manager.client_configs[name]["headers"])
+                        logger.info(f"Successfully added streamable MCP client for {name} after bearer token refresh")
+                    else:
+                        continue
+                else:
+                    continue            
+        else:
+            name = tool  # Use tool name as client name
+            command = server_config["command"]
+            args = server_config["args"]
+            env = server_config.get("env", {})  # Use empty dict if env is not present            
+            logger.info(f"Adding MCP client - name: {name}, command: {command}, args: {args}, env: {env}")        
 
-        try:
-            mcp_manager.add_client(name, command, args, env)
-            logger.info(f"Successfully added MCP client for {name}")
-        except Exception as e:
-            logger.error(f"Failed to add MCP client for {name}: {e}")
-            continue
-
+            try:
+                mcp_manager.add_stdio_client(name, command, args, env)
+                logger.info(f"Successfully added MCP client for {name}")
+            except Exception as e:
+                logger.error(f"Failed to add stdio MCP client for {name}: {e}")
+                continue
+                            
 def update_tools(strands_tools: list, mcp_servers: list):
     tools = []
     tool_map = {
         "calculator": calculator,
         "current_time": current_time,
-        "use_aws": use_aws
+        "use_aws": use_aws,
+        "speak": speak
         # "python_repl": python_repl  # Temporarily disabled
     }
 
-    for tool_name in strands_tools:
-        if tool_name in tool_map:
-            tools.append(tool_map[tool_name])
+    for tool_item in strands_tools:
+        if isinstance(tool_item, list):
+            tools.extend(tool_item)
+        elif isinstance(tool_item, str) and tool_item in tool_map:
+            tools.append(tool_map[tool_item])
 
     # MCP tools
     mcp_servers_loaded = 0
@@ -283,14 +462,18 @@ def update_tools(strands_tools: list, mcp_servers: list):
                 client = mcp_manager.get_client(mcp_tool)
                 if client:
                     logger.info(f"Got client for {mcp_tool}, attempting to list tools...")
-                    mcp_servers_list = client.list_tools_sync()
-                    logger.info(f"{mcp_tool}_tools: {mcp_servers_list}")
-                    if mcp_servers_list:
-                        tools.extend(mcp_servers_list)
-                        mcp_servers_loaded += 1
-                        logger.info(f"Successfully added {len(mcp_servers_list)} tools from {mcp_tool}")
-                    else:
-                        logger.warning(f"No tools returned from {mcp_tool}")
+                    try:
+                        mcp_servers_list = client.list_tools_sync()
+                        logger.info(f"{mcp_tool}_tools: {mcp_servers_list}")
+                        if mcp_servers_list:
+                            tools.extend(mcp_servers_list)
+                            mcp_servers_loaded += 1
+                            logger.info(f"Successfully added {len(mcp_servers_list)} tools from {mcp_tool}")
+                        else:
+                            logger.warning(f"No tools returned from {mcp_tool}")
+                    except Exception as tool_error:
+                        logger.error(f"Error listing tools for {mcp_tool}: {tool_error}")
+                        continue
                 else:
                     logger.error(f"Failed to get client for {mcp_tool}")
         except Exception as e:
@@ -298,6 +481,26 @@ def update_tools(strands_tools: list, mcp_servers: list):
             logger.error(f"Exception type: {type(e)}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
+            
+            # Try to refresh bearer token and retry for 403 errors
+            if "403" in str(e) or "Forbidden" in str(e) or "MCPClientInitializationError" in str(e) or "client initialization failed" in str(e):
+                logger.info(f"Attempting to refresh bearer token and retry for {mcp_tool}...")
+                if mcp_manager._refresh_bearer_token_and_update_client(mcp_tool):
+                    # Retry getting tools
+                    logger.info("Retrying tool retrieval with fresh bearer token...")
+                    with mcp_manager.get_active_clients([mcp_tool]) as _:
+                        client = mcp_manager.get_client(mcp_tool)
+                        if client:
+                            mcp_servers_list = client.list_tools_sync()
+                            if mcp_servers_list:
+                                tools.extend(mcp_servers_list)
+                                mcp_servers_loaded += 1
+                                logger.info(f"Successfully added {len(mcp_servers_list)} tools from {mcp_tool} after bearer token refresh")
+                            else:
+                                logger.warning(f"No tools returned from {mcp_tool} after bearer token refresh")
+                        else:
+                            logger.error(f"Failed to get client for {mcp_tool} after bearer token refresh")
+            
             continue
 
     logger.info(f"Successfully loaded {mcp_servers_loaded} out of {len(mcp_servers)} MCP tools")
@@ -305,18 +508,23 @@ def update_tools(strands_tools: list, mcp_servers: list):
 
     return tools
 
-def create_agent(tools, history_mode):
-    system = (
-        "당신의 이름은 서연이고, 질문에 대해 친절하게 답변하는 사려깊은 인공지능 도우미입니다."
-        "상황에 맞는 구체적인 세부 정보를 충분히 제공합니다." 
-        "모르는 질문을 받으면 솔직히 모른다고 말합니다."
-    )
+def create_agent(system_prompt, tools, history_mode):
+    if system_prompt==None:
+        system_prompt = (
+            "당신의 이름은 서연이고, 질문에 대해 친절하게 답변하는 사려깊은 인공지능 도우미입니다."
+            "상황에 맞는 구체적인 세부 정보를 충분히 제공합니다." 
+            "모르는 질문을 받으면 솔직히 모른다고 말합니다."
+        )
+
+    if not system_prompt or not system_prompt.strip():
+        system_prompt = "You are a helpful AI assistant."
+
     model = get_model()
     if history_mode == "Enable":
         logger.info("history_mode: Enable")
         agent = Agent(
             model=model,
-            system_prompt=system,
+            system_prompt=system_prompt,
             tools=tools,
             conversation_manager=conversation_manager
         )
@@ -324,242 +532,11 @@ def create_agent(tools, history_mode):
         logger.info("history_mode: Disable")
         agent = Agent(
             model=model,
-            system_prompt=system,
+            system_prompt=system_prompt,
             tools=tools
             #max_parallel_tools=2
         )
     return agent
-
-def get_tool_info(tool_name, tool_content):
-    tool_references = []    
-    urls = []
-    content = ""
-
-    # tavily
-    if isinstance(tool_content, str) and "Title:" in tool_content and "URL:" in tool_content and "Content:" in tool_content:
-        logger.info("Tavily parsing...")
-        items = tool_content.split("\n\n")
-        for i, item in enumerate(items):
-            # logger.info(f"item[{i}]: {item}")
-            if "Title:" in item and "URL:" in item and "Content:" in item:
-                try:
-                    title_part = item.split("Title:")[1].split("URL:")[0].strip()
-                    url_part = item.split("URL:")[1].split("Content:")[0].strip()
-                    content_part = item.split("Content:")[1].strip().replace("\n", "")
-                    
-                    logger.info(f"title_part: {title_part}")
-                    logger.info(f"url_part: {url_part}")
-                    logger.info(f"content_part: {content_part}")
-
-                    content += f"{content_part}\n\n"
-                    
-                    tool_references.append({
-                        "url": url_part,
-                        "title": title_part,
-                        "content": content_part[:100] + "..." if len(content_part) > 100 else content_part
-                    })
-                except Exception as e:
-                    logger.info(f"Parsing error: {str(e)}")
-                    continue                
-
-    # OpenSearch
-    elif tool_name == "SearchIndexTool": 
-        if ":" in tool_content:
-            extracted_json_data = tool_content.split(":", 1)[1].strip()
-            try:
-                json_data = json.loads(extracted_json_data)
-                # logger.info(f"extracted_json_data: {extracted_json_data[:200]}")
-            except json.JSONDecodeError:
-                logger.info("JSON parsing error")
-                json_data = {}
-        else:
-            json_data = {}
-        
-        if "hits" in json_data:
-            hits = json_data["hits"]["hits"]
-            if hits:
-                logger.info(f"hits[0]: {hits[0]}")
-
-            for hit in hits:
-                text = hit["_source"]["text"]
-                metadata = hit["_source"]["metadata"]
-                
-                content += f"{text}\n\n"
-
-                filename = metadata["name"].split("/")[-1]
-                # logger.info(f"filename: {filename}")
-                
-                content_part = text.replace("\n", "")
-                tool_references.append({
-                    "url": metadata["url"], 
-                    "title": filename,
-                    "content": content_part[:100] + "..." if len(content_part) > 100 else content_part
-                })
-                
-        logger.info(f"content: {content}")
-        
-    # Knowledge Base
-    elif tool_name == "QueryKnowledgeBases": 
-        try:
-            # Handle case where tool_content contains multiple JSON objects
-            if tool_content.strip().startswith('{'):
-                # Parse each JSON object individually
-                json_objects = []
-                current_pos = 0
-                brace_count = 0
-                start_pos = -1
-                
-                for i, char in enumerate(tool_content):
-                    if char == '{':
-                        if brace_count == 0:
-                            start_pos = i
-                        brace_count += 1
-                    elif char == '}':
-                        brace_count -= 1
-                        if brace_count == 0 and start_pos != -1:
-                            try:
-                                json_obj = json.loads(tool_content[start_pos:i+1])
-                                # logger.info(f"json_obj: {json_obj}")
-                                json_objects.append(json_obj)
-                            except json.JSONDecodeError:
-                                logger.info(f"JSON parsing error: {tool_content[start_pos:i+1][:100]}")
-                            start_pos = -1
-                
-                json_data = json_objects
-            else:
-                # Try original method
-                json_data = json.loads(tool_content)                
-            # logger.info(f"json_data: {json_data}")
-
-            # Build content
-            if isinstance(json_data, list):
-                for item in json_data:
-                    if isinstance(item, dict) and "content" in item:
-                        content_text = item["content"].get("text", "")
-                        content += content_text + "\n\n"
-
-                        uri = "" 
-                        if "location" in item:
-                            if "s3Location" in item["location"]:
-                                uri = item["location"]["s3Location"]["uri"]
-                                # logger.info(f"uri (list): {uri}")
-                                ext = uri.split(".")[-1]
-
-                                # if ext is an image 
-                                sharing_url = utils.sharing_url
-                                url = sharing_url + "/" + s3_prefix + "/" + uri.split("/")[-1]
-                                if ext in ["jpg", "jpeg", "png", "gif", "bmp", "tiff", "ico", "webp"]:
-                                    url = sharing_url + "/" + capture_prefix + "/" + uri.split("/")[-1]
-                                logger.info(f"url: {url}")
-                                
-                                tool_references.append({
-                                    "url": url, 
-                                    "title": uri.split("/")[-1],
-                                    "content": content_text[:100] + "..." if len(content_text) > 100 else content_text
-                                })          
-                
-        except json.JSONDecodeError as e:
-            logger.info(f"JSON parsing error: {e}")
-            json_data = {}
-            content = tool_content  # Use original content if parsing fails
-
-        logger.info(f"content: {content}")
-        logger.info(f"tool_references: {tool_references}")
-
-    # aws document
-    elif tool_name == "search_documentation":
-        try:
-            json_data = json.loads(tool_content)
-            for item in json_data:
-                logger.info(f"item: {item}")
-                
-                if isinstance(item, str):
-                    try:
-                        item = json.loads(item)
-                    except json.JSONDecodeError:
-                        logger.info(f"Failed to parse item as JSON: {item}")
-                        continue
-                
-                if isinstance(item, dict) and 'url' in item and 'title' in item:
-                    url = item['url']
-                    title = item['title']
-                    content_text = item['context'][:100] + "..." if len(item['context']) > 100 else item['context']
-                    tool_references.append({
-                        "url": url,
-                        "title": title,
-                        "content": content_text
-                    })
-                else:
-                    logger.info(f"Invalid item format: {item}")
-                    
-        except json.JSONDecodeError:
-            logger.info(f"JSON parsing error: {tool_content}")
-            pass
-
-        logger.info(f"content: {content}")
-        logger.info(f"tool_references: {tool_references}")
-            
-    # ArXiv
-    elif tool_name == "search_papers" and "papers" in tool_content:
-        try:
-            json_data = json.loads(tool_content)
-
-            papers = json_data['papers']
-            for paper in papers:
-                url = paper['url']
-                title = paper['title']
-                abstract = paper['abstract'].replace("\n", "")
-                content_text = abstract[:100] + "..." if len(abstract) > 100 else abstract
-                content += f"{content_text}\n\n"
-                logger.info(f"url: {url}, title: {title}, content: {content_text}")
-
-                tool_references.append({
-                    "url": url,
-                    "title": title,
-                    "content": content_text
-                })
-        except json.JSONDecodeError:
-            logger.info(f"JSON parsing error: {tool_content}")
-            pass
-
-        logger.info(f"content: {content}")
-        logger.info(f"tool_references: {tool_references}")
-
-    else:        
-        try:
-            if isinstance(tool_content, dict):
-                json_data = tool_content
-            elif isinstance(tool_content, list):
-                json_data = tool_content
-            else:
-                json_data = json.loads(tool_content)
-            
-            logger.info(f"json_data: {json_data}")
-            if isinstance(json_data, dict) and "path" in json_data:  # path
-                path = json_data["path"]
-                if isinstance(path, list):
-                    for url in path:
-                        urls.append(url)
-                else:
-                    urls.append(path)            
-
-            for item in json_data:
-                logger.info(f"item: {item}")
-                if "reference" in item and "contents" in item:
-                    url = item["reference"]["url"]
-                    title = item["reference"]["title"]
-                    content_text = item["contents"][:100] + "..." if len(item["contents"]) > 100 else item["contents"]
-                    tool_references.append({
-                        "url": url,
-                        "title": title,
-                        "content": content_text
-                    })
-            logger.info(f"tool_references: {tool_references}")
-
-        except json.JSONDecodeError:
-            pass
-
-    return content, urls, tool_references
 
 def get_tool_list(tools):
     tool_list = []
@@ -572,20 +549,11 @@ def get_tool_list(tools):
             tool_list.append(module_name)
     return tool_list
 
-async def run_agent(question, strands_tools, mcp_servers, historyMode, containers):
-    result = ""
-    current_response = ""
+async def initiate_agent(system_prompt, strands_tools, mcp_servers, historyMode):
+    global agent, initiated
+    global selected_strands_tools, selected_mcp_servers, history_mode, tool_list
 
-    global references, image_url
-    image_url = []    
-    references = []
-
-    global status_msg
-    status_msg = []
-
-    global agent, initiated, update_required, tool_list
-    global selected_strands_tools, selected_mcp_servers
-
+    update_required = False
     if selected_strands_tools != strands_tools:
         logger.info("strands_tools update!")
         selected_strands_tools = strands_tools
@@ -598,142 +566,28 @@ async def run_agent(question, strands_tools, mcp_servers, historyMode, container
         update_required = True
         logger.info(f"mcp_servers: {mcp_servers}")
 
-    if not initiated: 
-        logger.info("create agent!")
+    if history_mode != historyMode:
+        logger.info("history_mode update!")
+        history_mode = historyMode
+        update_required = True
+        logger.info(f"history_mode: {history_mode}")
+
+    logger.info(f"initiated: {initiated}, update_required: {update_required}")
+
+    if not initiated or update_required:        
         init_mcp_clients(mcp_servers)
         tools = update_tools(strands_tools, mcp_servers)
         logger.info(f"tools: {tools}")
 
-        agent = create_agent(tools, historyMode)
+        agent = create_agent(system_prompt, tools, history_mode)
         tool_list = get_tool_list(tools)
-        if chat.debug_mode == 'Enable':
-            containers['tools'].info(f"Tools: {tool_list}")
-        initiated = True
-    elif update_required:      
-        logger.info(f"update_required: {update_required}")
-        logger.info("update agent!")
-        init_mcp_clients(mcp_servers)
-        tools = update_tools(strands_tools, mcp_servers)
-        logger.info(f"tools: {tools}")
 
-        agent = create_agent(tools, historyMode)
-        tool_list = get_tool_list(tools)
-        if chat.debug_mode == 'Enable':
-            containers['tools'].info(f"Tools: {tool_list}")
-        update_required = False
-    else:
-        if chat.debug_mode == 'Enable':
-            containers['tools'].info(f"tool_list: {tool_list}")
-    
-    if chat.debug_mode == 'Enable':
-        containers['status'].info(get_status_msg(f"(start"))    
-
-    with mcp_manager.get_active_clients(mcp_servers) as _:
-        agent_stream = agent.stream_async(question)
-        
-        tool_name = ""
-        async for event in agent_stream:
-            # logger.info(f"event: {event}")
-            if "message" in event:
-                message = event["message"]
-                logger.info(f"message: {message}")
-
-                for content in message["content"]:                
-                    if "text" in content:
-                        logger.info(f"text: {content['text']}")
-                        if chat.debug_mode == 'Enable':
-                            add_response(containers, content['text'])
-
-                        result = content['text']
-                        current_response = ""
-
-                    if "toolUse" in content:
-                        tool_use = content["toolUse"]
-                        logger.info(f"tool_use: {tool_use}")
-                        
-                        tool_name = tool_use["name"]
-                        input = tool_use["input"]
-                        
-                        logger.info(f"tool_nmae: {tool_name}, arg: {input}")
-                        if chat.debug_mode == 'Enable':       
-                            add_notification(containers, f"tool name: {tool_name}, arg: {input}")
-                            containers['status'].info(get_status_msg(f"{tool_name}"))
-                
-                    if "toolResult" in content:
-                        tool_result = content["toolResult"]
-                        logger.info(f"tool_name: {tool_name}")
-                        logger.info(f"tool_result: {tool_result}")
-                        if "content" in tool_result:
-                            tool_content = tool_result['content']
-                            for content in tool_content:
-                                if "text" in content:
-                                    if chat.debug_mode == 'Enable':
-                                        add_notification(containers, f"tool result: {content['text']}")
-
-                                    try:
-                                        json_data = json.loads(content['text'])
-                                        if isinstance(json_data, dict) and "path" in json_data:
-                                            paths = json_data["path"]
-                                            logger.info(f"paths: {paths}")
-                                            for path in paths:
-                                                if path.startswith("http"):
-                                                    image_url.append(path)
-                                                    logger.info(f"Added image URL: {path}")
-                                    except json.JSONDecodeError:
-                                        pass
-
-                                    content, urls, refs = get_tool_info(tool_name, content['text'])
-                                    logger.info(f"content: {content}")
-                                    logger.info(f"urls: {urls}")
-                                    logger.info(f"refs: {refs}")
-
-                                    if refs:
-                                        for r in refs:
-                                            references.append(r)
-                                        logger.info(f"refs: {refs}")
-                                    if urls:
-                                        for url in urls:
-                                            image_url.append(url)
-                                        logger.info(f"urls: {urls}")
-
-                                        if chat.debug_mode == "Enable":
-                                            add_notification(containers, f"Added path to image_url: {urls}")
-                                            response_msg.append(f"Added path to image_url: {urls}")
-                                        
-            if "event_loop_metrics" in event and \
-                hasattr(event["event_loop_metrics"], "tool_metrics") and \
-                "generate_image_with_colors" in event["event_loop_metrics"].tool_metrics:
-                tool_info = event["event_loop_metrics"].tool_metrics["generate_image_with_colors"].tool
-                if "input" in tool_info and "filename" in tool_info["input"]:
-                    fname = tool_info["input"]["filename"]
-                    if fname:
-                        url = f"{chat.path}/{chat.s3_image_prefix}/{parse.quote(fname)}.png"
-                        if url not in image_url:
-                            image_url.append(url)
-                            logger.info(f"Added image URL: {url}")
-
-            if "data" in event:
-                text_data = event["data"]
-                current_response += text_data
-
-                if chat.debug_mode == 'Enable':
-                    containers["notification"][index].markdown(current_response)
-                continue
-
-    if chat.debug_mode == 'Enable':
-        containers['status'].info(get_status_msg(f"end)"))
-
-    ref = ""
-    if references:
-        ref = "\n\n### Reference\n"
-        for i, reference in enumerate(references):
-            ref += f"{i+1}. [{reference['title']}]({reference['url']}), {reference['content']}...\n"    
-
-        # show reference
-        if chat.debug_mode == 'Enable':
-            containers['notification'][index-1].markdown(result+ref)
-
-    return result+ref, image_url
+        if not initiated:
+            logger.info("create agent!")
+            initiated = True
+        else:
+            logger.info("update agent!")
+            update_required = False
 
 async def run_task(question, strands_tools, mcp_servers, system_prompt, containers, historyMode, previous_status_msg, previous_response_msg):
     global status_msg, response_msg
@@ -751,7 +605,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
     init_mcp_clients(mcp_servers)
     tools = update_tools(strands_tools, mcp_servers)
     logger.info(f"tools: {tools}")
-    agent = create_agent(tools, historyMode)
+    agent = create_agent(None, tools, historyMode)
 
     tool_list = get_tool_list(tools)
     logger.info(f"tool_list: {tool_list}")
@@ -775,7 +629,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                     if "text" in content:
                         logger.info(f"text: {content['text']}")
                         if chat.debug_mode == 'Enable':
-                            add_response(containers, content['text'])
+                            chat.add_response(containers, content['text'])
 
                         result = content['text']
                         current_response = ""
@@ -789,7 +643,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                         
                         logger.info(f"tool_nmae: {tool_name}, arg: {input}")
                         if chat.debug_mode == 'Enable':       
-                            add_notification(containers, f"tool name: {tool_name}, arg: {input}")
+                            chat.add_notification(containers, f"tool name: {tool_name}, arg: {input}")
                             containers['status'].info(get_status_msg(f"{tool_name}"))
                 
                     if "toolResult" in content:
@@ -801,7 +655,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                             for content in tool_content:
                                 if "text" in content:
                                     if chat.debug_mode == 'Enable':
-                                        add_notification(containers, f"tool result: {content['text']}")
+                                        chat.add_notification(containers, f"tool result: {content['text']}")
 
                                     try:
                                         json_data = json.loads(content['text'])
@@ -815,7 +669,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                                     except json.JSONDecodeError:
                                         pass
 
-                                    content, urls, refs = get_tool_info(tool_name, content['text'])
+                                    content, urls, refs = chat.get_tool_info(tool_name, content['text'])
                                     logger.info(f"content: {content}")
                                     logger.info(f"urls: {urls}")
                                     logger.info(f"refs: {refs}")
@@ -830,7 +684,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                                         logger.info(f"urls: {urls}")
 
                                         if chat.debug_mode == "Enable":
-                                            add_notification(containers, f"Added path to image_url: {urls}")
+                                            chat.add_notification(containers, f"Added path to image_url: {urls}")
                                             response_msg.append(f"Added path to image_url: {urls}")
                                         
             if "event_loop_metrics" in event and \
@@ -850,7 +704,7 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
                 current_response += text_data
 
                 if chat.debug_mode == 'Enable':
-                    containers["notification"][index].markdown(current_response)
+                    containers["notification"][chat.index].markdown(current_response)
                 continue
 
     if chat.debug_mode == 'Enable':
@@ -864,7 +718,6 @@ async def run_task(question, strands_tools, mcp_servers, system_prompt, containe
 
         # show reference
         if chat.debug_mode == 'Enable':
-            containers['notification'][index-1].markdown(result+ref)
+            containers['notification'][chat.index-1].markdown(result+ref)
 
     return result, image_url, status_msg, response_msg
-

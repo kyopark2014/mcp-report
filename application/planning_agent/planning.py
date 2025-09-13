@@ -480,6 +480,10 @@ def get_mcp_server_list():
 async def run_planning_agent(query, mcp_servers, agent_type, st):
     logger.info(f"###### run_planning_agent ######")
     logger.info(f"query: {query}")
+    
+    global status_msg, response_msg, mcp_server_info
+    status_msg = []
+    response_msg = []
 
     mcp_json = mcp_config.load_selected_config(mcp_servers)
     logger.info(f"mcp_json: {mcp_json}")  
@@ -487,58 +491,53 @@ async def run_planning_agent(query, mcp_servers, agent_type, st):
     server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
     logger.info(f"server_params: {server_params}")
 
-    global status_msg, response_msg, mcp_server_info
-    status_msg = []
-    response_msg = []
+    client = MultiServerMCPClient(server_params)
+    tools = await client.get_tools()
+
+    tool_list = [tool.name for tool in tools]
+    logger.info(f"tool_list: {tool_list}")
     
-    async with MultiServerMCPClient(server_params) as client:
-        response = ""
-        with st.status("thinking...", expanded=True, state="running") as status:       
-            mcp_server_info = client.server_name_to_tools.items()
+    if chat.debug_mode == "Enable":
+        get_tool_info(tools, st)
 
-            tools = client.get_tools()
-
-            if chat.debug_mode == "Enable":
-                get_tool_info(tools, st)
-
-            request_id, report_url = initiate_report(planning_app, st)
-            
-            containers = {
-                "tools": st.empty(),
-                "status": st.empty(),
-                "notification": [st.empty() for _ in range(100)]
-            }            
-            if chat.debug_mode == "Enable":
-                containers['status'].info(get_status_msg("start"))
-                                                        
-            inputs = {
-                "input": query
-            }
-            config = {
-                "request_id": request_id,
-                "recursion_limit": 50,
-                "containers": containers,
-                "tools": tools,
-                "agent_type": agent_type
-            }    
-
-            value = None
-            async for output in planning_app.astream(inputs, config):
-                for key, value in output.items():
-                    logger.info(f"Finished running: {key}")
-            
-            logger.info(f"value: {value}")
-            response = value["answer"]
-            logger.info(f"response: {response}")
-
-            urls = value["urls"] if "urls" in value else []
-            logger.info(f"urls: {urls}")
-
-        if urls:
-            with st.expander(f"수행 결과"):
-                st.markdown('\n\n'.join(urls))
-
-        image_url = []
+    request_id, report_url = initiate_report(planning_app, st)
     
+    containers = {
+        "tools": st.empty(),
+        "status": st.empty(),
+        "notification": [st.empty() for _ in range(100)]
+    }            
+    if chat.debug_mode == "Enable":
+        containers['status'].info(get_status_msg("start"))
+                                                
+    inputs = {
+        "input": query
+    }
+    config = {
+        "request_id": request_id,
+        "recursion_limit": 50,
+        "containers": containers,
+        "tools": tools,
+        "agent_type": agent_type
+    }    
+
+    value = None
+    async for output in planning_app.astream(inputs, config):
+        for key, value in output.items():
+            logger.info(f"Finished running: {key}")
+    
+    logger.info(f"value: {value}")
+    response = value["answer"]
+    logger.info(f"response: {response}")
+
+    urls = value["urls"] if "urls" in value else []
+    logger.info(f"urls: {urls}")
+
+    if urls:
+        with st.expander(f"수행 결과"):
+            st.markdown('\n\n'.join(urls))
+
+    image_url = []
+
     return response, image_url, urls
 

@@ -144,6 +144,7 @@ seed_image_url = seed_config.get("seed_image", "") if seed_config else ""
 logger.info(f"seed_image_url from config: {seed_image_url}")
 
 uploaded_seed_image = None
+agentType = None
 with st.sidebar:
     st.title("🔮 Menu")
     
@@ -193,7 +194,7 @@ with st.sidebar:
         default_selections = ["basic", "tavily-manual", "use_aws", "filesystem"]
 
         if mode=='Agent' or mode=='Agent (Chat)' or mode=='Planning Agent' or mode=='비용 분석 Agent' or mode=='Biology Agent':
-            agent_type = st.radio(
+            agentType = st.radio(
                 label="Agent 타입을 선택하세요. ",options=["LangGraph", "Strands"], index=0
             )
 
@@ -269,7 +270,7 @@ with st.sidebar:
     # model selection box
     modelName = st.selectbox(
         '🖊️ 사용 모델을 선택하세요',
-        ("Nova Premier", 'Nova Pro', 'Nova Lite', 'Nova Micro', 'Claude 4 Opus', 'Claude 4 Sonnet', 'Claude 3.7 Sonnet', 'Claude 3.5 Sonnet', 'Claude 3.0 Sonnet', 'Claude 3.5 Haiku'), index=7
+        ("Nova Premier", 'Nova Pro', 'Nova Lite', 'Nova Micro', 'Claude 4 Opus', 'Claude 4 Sonnet', 'Claude 3.7 Sonnet', 'Claude 3.5 Sonnet', 'Claude 3.0 Sonnet', 'Claude 3.5 Haiku'), index=6
     )
 
     # debug checkbox
@@ -300,7 +301,7 @@ with st.sidebar:
         # print('fileId: ', chat.fileId)
         uploaded_file = st.file_uploader("RAG를 위한 파일을 선택합니다.", type=["pdf", "txt", "py", "md", "csv", "json"], key=chat.fileId)
 
-    chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode)
+    chat.update(modelName, debugMode, multiRegion, reasoningMode, gradingMode, agentType)
 
     st.success(f"Connected to {modelName}", icon="💚")
     clear_button = st.button("대화 초기화", key="clear")
@@ -460,10 +461,10 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
                     "status": st.empty(),
                     "notification": [st.empty() for _ in range(500)]
                 }
-                if agent_type == "LangGraph":
-                    response, image_url = asyncio.run(langgraph_agent.run_agent(prompt, mcp_servers, history_mode, containers))    
+                if agentType == "LangGraph":
+                    response, image_url = asyncio.run(chat.run_langgraph_agent(prompt, mcp_servers, history_mode, containers))    
                 else:
-                    response, image_url = asyncio.run(strands_agent.run_agent(prompt, [], mcp_servers, history_mode, containers))
+                    response, image_url = asyncio.run(chat.run_strands_agent(prompt, [], mcp_servers, history_mode, containers))
 
             # if langgraph_agent.response_msg:
             #     with st.expander(f"수행 결과"):
@@ -475,7 +476,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
                 "images": image_url if image_url else []
             })
 
-            if agent_type == "LangGraph":
+            if agentType == "LangGraph":
                 st.write(response)
 
             for url in image_url:
@@ -488,7 +489,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             chat.references = []
             chat.image_url = []
             
-            response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, mcp_servers, agent_type, st))
+            response, image_url, urls = asyncio.run(bio_agent.run_biology_agent(prompt, mcp_servers, agentType, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 
@@ -513,7 +514,7 @@ if mode != "비용 분석 Agent" and (prompt := st.chat_input("메시지를 입�
             chat.references = []
             chat.image_url = []
             
-            response, image_url, urls = asyncio.run(planning.run_planning_agent(prompt, mcp_servers, agent_type, st))
+            response, image_url, urls = asyncio.run(planning.run_planning_agent(prompt, mcp_servers, agentType, st))
 
             st.session_state.messages.append({
                 "role": "assistant", 

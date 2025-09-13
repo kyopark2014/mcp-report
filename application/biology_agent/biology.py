@@ -485,76 +485,71 @@ async def run_biology_agent(query, mcp_servers, agent_type, st):
     logger.info(f"###### run_biology_agent ######")
     logger.info(f"query: {query}")
 
-    mcp_json = mcp_config.load_selected_config(mcp_servers)
-    logger.info(f"mcp_json: {mcp_json}")  
-
-    server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
-    logger.info(f"server_params: {server_params}")
-
     global status_msg, response_msg, mcp_server_info
     status_msg = []
     response_msg = []
-    
-    async with MultiServerMCPClient(server_params) as client:
-        response = ""
-        with st.status("thinking...", expanded=True, state="running") as status:       
-            mcp_server_info = client.server_name_to_tools.items()
 
-            tools = client.get_tools()
+    mcp_json = mcp_config.load_selected_config(mcp_servers)
+    logger.info(f"mcp_json: {mcp_json}")
 
-            if chat.debug_mode == "Enable":
-                get_tool_info(tools, st)
-                logger.info(f"tools: {tools}")
+    server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
+    logger.info(f"server_params: {server_params}")    
+
+    client = MultiServerMCPClient(server_params)
+    tools = await client.get_tools()
+
+    tool_list = [tool.name for tool in tools]
+    logger.info(f"tool_list: {tool_list}")
+
+    request_id, report_url = initiate_report(bio_agent, st)
+
+    containers = {
+        "tools": st.empty(),
+        "status": st.empty(),
+        "notification": [st.empty() for _ in range(500)]
+    }
+
+    global index
+    index = 0
+
+    if chat.debug_mode == "Enable":
+        containers['status'].info(get_status_msg("start"))
         
-            request_id, report_url = initiate_report(bio_agent, st)
+    inputs = {
+        "messages": [HumanMessage(content=query)],
+        "final_response": "",
+        "urls": [report_url]
+    }
+    config = {
+        "request_id": request_id,
+        "recursion_limit": 50,
+        "containers": containers,
+        "tools": tools,
+        "agent_type": agent_type
+    }
 
-            containers = {
-                "tools": st.empty(),
-                "status": st.empty(),
-                "notification": [st.empty() for _ in range(100)]
-            }
+    value = None
+    async for output in bio_agent.astream(inputs, config):
+        for key, value in output.items():
+            logger.info(f"Finished running: {key}")            
+    logger.info(f"value: {value}")
 
-            global index
-            index = 0
+    if "report" in value:
+        response = value["report"]
+        urls = value["urls"]
+    else:
+        response = value["final_response"], 
+        urls = value["urls"]
 
-            if chat.debug_mode == "Enable":
-                containers['status'].info(get_status_msg("start"))
-                
-            inputs = {
-                "messages": [HumanMessage(content=query)],
-                "final_response": "",
-                "urls": [report_url]
-            }
-            config = {
-                "request_id": request_id,
-                "recursion_limit": 50,
-                "containers": containers,
-                "tools": tools,
-                "agent_type": agent_type
-            }
+    logger.info(f"response: {response}")
+    logger.info(f"urls: {urls}")
 
-            value = None
-            async for output in bio_agent.astream(inputs, config):
-                for key, value in output.items():
-                    logger.info(f"Finished running: {key}")            
-            logger.info(f"value: {value}")
+    if response_msg:
+        with st.expander(f"수행 결과"):
+            response_msgs = '\n\n'.join(response_msg)
+            st.markdown(response_msgs)
 
-            if "report" in value:
-                response = value["report"]
-                urls = value["urls"]
-            else:
-                response = value["final_response"], 
-                urls = value["urls"]
+    image_url = []  # todo
 
-            logger.info(f"response: {response}")
-            logger.info(f"urls: {urls}")
-
-        if response_msg:
-            with st.expander(f"수행 결과"):
-                response_msgs = '\n\n'.join(response_msg)
-                st.markdown(response_msgs)
-
-        image_url = []  # todo
-    
     return response, image_url, urls
 
