@@ -121,7 +121,7 @@ async def should_continue(state: State, config) -> Literal["continue", "end"]:
         return "end"
 
 def buildChatAgent(tools):
-    tool_node = ToolNode(tools)
+    tool_node = ToolNode(tools, handle_tool_errors=True)
 
     workflow = StateGraph(State)
 
@@ -141,7 +141,7 @@ def buildChatAgent(tools):
     return workflow.compile() 
 
 def buildChatAgentWithHistory(tools):
-    tool_node = ToolNode(tools)
+    tool_node = ToolNode(tools, handle_tool_errors=True)
 
     workflow = StateGraph(State)
 
