@@ -24,7 +24,7 @@ from langchain_core.prompts import MessagesPlaceholder, ChatPromptTemplate
 from langgraph.graph import START, END, StateGraph
 from langchain_core.tools import BaseTool
 from langchain_core.runnables.graph import CurveStyle, MermaidDrawMethod, NodeStyles
-from langchain_mcp_adapters.client import MultiServerMCPClient
+from langchain.mcp import MCPAdapter
 from datetime import datetime
 
 import logging
@@ -491,8 +491,15 @@ async def run_planning_agent(query, mcp_servers, agent_type, st):
     server_params = langgraph_agent.load_multiple_mcp_server_parameters(mcp_json)
     logger.info(f"server_params: {server_params}")
 
-    client = MultiServerMCPClient(server_params)
-    tools = await client.get_tools()
+    tools = []
+    for server_name, params in server_params.items():
+        try:
+            async with MCPAdapter({"mcpServers": {server_name: params}}) as adapter:
+                _tools = await adapter.list_tools()
+            tools.extend(_tools)
+        except Exception as _mcp_err:
+            logger.error(f"Failed to load MCP server '{server_name}': {_mcp_err}")
+
 
     tool_list = [tool.name for tool in tools]
     logger.info(f"tool_list: {tool_list}")

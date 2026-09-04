@@ -4,7 +4,7 @@ import os
 import aws_cli as aws_utils
 import sys
 
-from mcp.server.fastmcp import FastMCP
+from mcp.server.mcpserver import MCPServer
 from typing import Any, Dict, List, Optional
 
 import boto3
@@ -28,7 +28,7 @@ aws_session_token = os.environ.get('AWS_SESSION_TOKEN')
 aws_region = os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')
 
 try:
-    mcp = FastMCP(
+    mcp = MCPServer(
         name = "aws_cli",
         instructions=(
             "You are a helpful assistant. "
