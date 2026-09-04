@@ -16,7 +16,8 @@ from strands.agent.conversation_manager import SlidingWindowConversationManager
 from strands import Agent
 from strands.tools.mcp import MCPClient
 from mcp import stdio_client, StdioServerParameters
-from mcp.client.streamable_http import streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
+from mcp.shared._httpx_utils import create_mcp_http_client
 from botocore.config import Config
 from speak import speak
 from urllib import parse
@@ -146,6 +147,25 @@ conversation_manager = SlidingWindowConversationManager(
     window_size=10,  
 )
 
+
+@contextlib.asynccontextmanager
+async def _streamable_http_with_headers(
+    url: str,
+    headers: dict[str, str],
+    *,
+    terminate_on_close: bool = True,
+):
+    """Custom headers for Streamable HTTP MCP (MCP SDK 2.x streamable_http_client)."""
+    client = create_mcp_http_client(headers=headers)
+    async with client:
+        async with streamable_http_client(
+            url,
+            http_client=client,
+            terminate_on_close=terminate_on_close,
+        ) as streams:
+            yield streams
+
+
 class MCPClientManager:
     def __init__(self):
         self.clients: Dict[str, MCPClient] = {}
@@ -229,10 +249,18 @@ class MCPClientManager:
             try:
                 if "transport" in config and config["transport"] == "streamable_http":
                     try:
-                        self.clients[name] = MCPClient(lambda: streamablehttp_client(
-                            url=config["url"], 
-                            headers=config["headers"]
-                        ))
+                        url = config["url"]
+                        hdrs = config.get("headers") or {}
+                        if hdrs:
+                            self.clients[name] = MCPClient(
+                                lambda u=url, h=dict(hdrs): _streamable_http_with_headers(
+                                    u, h, terminate_on_close=True
+                                )
+                            )
+                        else:
+                            self.clients[name] = MCPClient(
+                                lambda u=url: streamable_http_client(u)
+                            )
                     except Exception as http_error:
                         logger.error(f"Failed to create streamable HTTP client for {name}: {http_error}")
                         if "403" in str(http_error) or "Forbidden" in str(http_error) or "MCPClientInitializationError" in str(http_error) or "client initialization failed" in str(http_error):
@@ -243,11 +271,19 @@ class MCPClientManager:
                                 # Retry with new bearer token
                                 logger.info("Retrying MCP client creation with fresh bearer token...")
                                 config = self.client_configs[name]
-                                self.clients[name] = MCPClient(lambda: streamablehttp_client(
-                                    url=config["url"], 
-                                    headers=config["headers"]
-                                ))
-                                
+                                url = config["url"]
+                                hdrs = config.get("headers") or {}
+                                if hdrs:
+                                    self.clients[name] = MCPClient(
+                                        lambda u=url, h=dict(hdrs): _streamable_http_with_headers(
+                                            u, h, terminate_on_close=True
+                                        )
+                                    )
+                                else:
+                                    self.clients[name] = MCPClient(
+                                        lambda u=url: streamable_http_client(u)
+                                    )
+
                                 logger.info(f"Successfully created MCP client for {name} after bearer token refresh")
                             else:
                                 raise http_error
